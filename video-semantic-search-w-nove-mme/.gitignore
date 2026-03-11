@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+venv/
+
+# Environment
+.env
+.env.local
+
+# Build artifacts
+lambda/*.zip
+lambda/layer.zip
+*.zip
+
+# Terraform
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform.lock.hcl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+/tmp/
+.env.lambda
+*.png
+frontend-static/js/config.js
+terraform-v2/terraform.tfstate
+terraform-v2/terraform.tfstate.backup
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+**/.terraform/
+**/.terraform.lock.hcl
+
+# Notebooks
+notebooks/videos/
+notebooks/config.json
+notebooks/ground_truth.json
+notebooks/benchmark_results.png
+notebooks/.ipynb_checkpoints/
+terraform/terraform.tfstate.d/

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bedrock Video Search</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23232f3e'/%3E%3Cpath d='M37.5 43.3c-4.2 2.5-10.3 3.8-15.5 3.8-7.3 0-13.9-2.7-18.9-7.2-.4-.4 0-.9.4-.6 5.4 3.1 12 5 18.9 5 4.6 0 9.7-1 14.4-3 .7-.3 1.3.5.7 1z' fill='%23ff9900'/%3E%3Cpath d='M39.1 41.4c-.5-.7-3.5-.3-4.8-.2-.4.1-.5-.3-.1-.6 2.4-1.7 6.2-1.2 6.7-.6.5.6-.1 4.5-2.3 6.4-.3.3-.7.1-.5-.2.5-1.3 1.6-4.1 1-4.8z' fill='%23ff9900'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-container">
+            <h1>Bedrock Video Search</h1>
+            <p class="subtitle">AI-powered video search with Nova MME</p>
+            <form id="loginForm" class="login-form">
+                <input type="email" id="loginEmail" placeholder="Email" required autocomplete="username">
+                <input type="password" id="loginPassword" placeholder="Password" required autocomplete="current-password">
+                <div id="loginError" class="login-error" style="display:none;"></div>
+                <button type="submit" id="loginBtn" class="login-btn">Sign In</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Project List Screen -->
+    <div id="projectScreen" style="display:none;" class="project-screen">
+        <div class="project-header">
+            <div>
+                <h1>Bedrock Video Search</h1>
+                <p class="subtitle">Select or create a project</p>
+            </div>
+            <button id="projectLogoutBtn" class="logout-btn">Logout</button>
+        </div>
+        <div id="projectsList" class="projects-grid"></div>
+    </div>
+
+    <!-- Main App (hidden until project selected) -->
+    <div id="mainApp" style="display: none;">
+        <div class="container">
+            <header>
+                <div class="header-title">
+                    <div>
+                        <h1><a id="backToProjects" class="back-link">Bedrock Video Search</a> / <span id="projectTitle"></span> <button id="projectSettingsBtn" onclick="showProjectSettings()" style="background:none;border:none;cursor:pointer;vertical-align:middle;opacity:0.7;padding:4px;" title="Project Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></h1>
+                        <p class="subtitle">AI-powered video search with intelligent modality weighting</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button id="logoutBtn" class="logout-btn">Logout</button>
+                </div>
+            </header>
+
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="upload">Ingestion Jobs</button>
+                <button class="tab-btn" data-tab="search">Search</button>
+                <button class="tab-btn" data-tab="gallery">Gallery</button>
+                <button class="tab-btn" data-tab="entityCatalog">Entity Catalog</button>
+            </div>
+
+            <!-- Ingestion Jobs Tab -->
+            <div class="tab-content active" id="upload">
+                <div class="jobs-section">
+                    <div id="jobsStatus" class="search-status"></div>
+                    <div id="jobsList" class="jobs-list"></div>
+                </div>
+            </div>
+
+            <!-- Search Tab -->
+            <div class="tab-content" id="search">
+                <div class="search-section" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+                    <div style="flex-shrink:0;">
+                        <div class="search-bar">
+                            <input type="text" id="searchInput" placeholder="Describe what you're looking for..." />
+                            <button id="searchBtn">Search</button>
+                            <span id="searchHelpBtn" onclick="document.getElementById('searchHelpPopup').style.display = document.getElementById('searchHelpPopup').style.display === 'none' ? 'block' : 'none'" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#e5e5e5;color:#666;font-size:0.75rem;font-weight:700;cursor:pointer;flex-shrink:0;align-self:center;">?</span>
+                        </div>
+                        <div id="searchHelpPopup" style="display:none;background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:16px 20px;margin-top:8px;font-size:0.85rem;line-height:1.8;color:#333;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                <span style="font-weight:600;font-size:0.9rem;">Search Syntax</span>
+                                <button onclick="this.parentElement.parentElement.style.display='none'" style="background:none;border:none;color:#999;cursor:pointer;font-size:1.1rem;">&times;</button>
+                            </div>
+                            <div><span style="color:#888;">natural language</span> &mdash; AI-weighted visual/audio/speech search</div>
+                            <div><span style="background:#e5e5e5;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;">@name</span> &mdash; boost BM25 matching on the people field</div>
+                            <div style="margin-top:8px;color:#888;font-size:0.8rem;">Combine: <span style="background:#e5e5e5;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;">@name talking about serverless</span></div>
+                        </div>
+                        <div id="weightReasoning" class="weight-reasoning" style="display: none; width:100%;"></div>
+                    </div>
+                    <div id="searchPanels" class="search-panels" style="flex:1;overflow-y:auto;">
+                        <div class="search-panel" id="bedrockPanel">
+                            <div class="panel-header" id="bedrockPanelHeader" style="display:none;">
+                                <h3>Bedrock (Nova MME)</h3>
+                                <span id="bedrockLatency" class="latency-badge"></span>
+                            </div>
+                            <div id="bedrockStatus" class="search-status"></div>
+                            <div id="bedrockResults" class="results-grid"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gallery Tab -->
+            <div class="tab-content" id="gallery">
+                <div class="gallery-section">
+                    <div id="galleryStatus" class="search-status"></div>
+                    <div id="galleryGrid" class="results-grid"></div>
+                </div>
+            </div>
+
+            <!-- Entity Catalog Tab -->
+            <div class="tab-content" id="entityCatalog">
+                <div class="entities-section" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+                    <div id="entityStatus" class="search-status" style="flex-shrink:0;"></div>
+                    <div id="entityList" class="entities-grid" style="flex:1;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Bottom Nav -->
+        <nav class="mobile-bottom-nav" id="mobileBottomNav">
+            <button class="mobile-nav-item" data-tab="search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span>Search</span>
+            </button>
+            <button class="mobile-nav-item active" data-tab="upload">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Upload</span>
+            </button>
+            <button class="mobile-nav-item" data-tab="gallery">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <span>Gallery</span>
+            </button>
+        </nav>
+
+        <!-- Floating Action Button -->
+        <button class="floating-action-btn" id="floatingActionBtn" style="display: none;">
+            <svg id="fabIcon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+        </button>
+        <input type="file" id="videoInput" accept="video/*" multiple style="display: none;">
+
+        <!-- Upload Progress Toast -->
+        <div id="uploadToast" class="upload-toast" style="display: none;">
+            <div class="toast-content">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p id="uploadStatus">Uploading...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
