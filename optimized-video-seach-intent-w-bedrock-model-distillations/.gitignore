@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated eval datasets (per-model, created at runtime)
+eval_dataset_*.jsonl
+!eval_dataset.jsonl
+
+# Generated charts
+*.png
+
+# Pip artifacts
+=*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,100 @@
+{"query": "Leo arguing about in front of the camera", "reference": "{\"visual\": 0.4, \"audio\": 0.2, \"transcription\": 0.3, \"metadata\": 0.1}"}
+{"query": "interview with Lisa about ethics of gene editing", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "dolphin running across the grass", "reference": "{\"visual\": 0.7, \"audio\": 0.0, \"transcription\": 0.0, \"metadata\": 0.3}"}
+{"query": "Yuki discuss the importance of machine learning to human civilization", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.6, \"metadata\": 0.2}"}
+{"query": "HBO original film", "reference": "{\"visual\": 0.1, \"audio\": 0.0, \"transcription\": 0.0, \"metadata\": 0.9}"}
+{"query": "flute playing softly", "reference": "{\"visual\": 0.1, \"audio\": 0.7, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "someone holding a book", "reference": "{\"visual\": 0.8, \"audio\": 0.0, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "romance special from 2022", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
+{"query": "best romance film of 2022", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
+{"query": "Daniel riding a boat", "reference": "{\"visual\": 0.6, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.3}"}
+{"query": "audience reacting to Alex at rally", "reference": "{\"visual\": 0.4, \"audio\": 0.3, \"transcription\": 0.1, \"metadata\": 0.2}"}
+{"query": "Raj walking through downtown", "reference": "{\"visual\": 0.6, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.3}"}
+{"query": "hail storm sound in the background", "reference": "{\"visual\": 0.1, \"audio\": 0.8, \"transcription\": 0.0, \"metadata\": 0.1}"}
+{"query": "voiceover explaining the restoration process", "reference": "{\"visual\": 0.3, \"audio\": 0.2, \"transcription\": 0.4, \"metadata\": 0.1}"}
+{"query": "Marcus standing next to a suitcase", "reference": "{\"visual\": 0.6, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.3}"}
+{"query": "construction noise near a coffee shop", "reference": "{\"visual\": 0.2, \"audio\": 0.6, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "Carlos being interviewed on the stage of the airport", "reference": "{\"visual\": 0.4, \"audio\": 0.1, \"transcription\": 0.3, \"metadata\": 0.2}"}
+{"query": "jazz music playing over a cooking scene", "reference": "{\"visual\": 0.3, \"audio\": 0.5, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "fireworks going off at the concert", "reference": "{\"visual\": 0.5, \"audio\": 0.3, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "Disney+ original film", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
+{"query": "Raj discuss the importance of urban planning to everyday life", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "best adventure film of 2023", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
+{"query": "voiceover explaining the surgical procedure", "reference": "{\"visual\": 0.3, \"audio\": 0.2, \"transcription\": 0.4, \"metadata\": 0.1}"}
+{"query": "engine sputtering of a bus", "reference": "{\"visual\": 0.2, \"audio\": 0.6, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "fireworks going off at the festival", "reference": "{\"visual\": 0.6, \"audio\": 0.2, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "the host demonstrating brew coffee properly on stage", "reference": "{\"visual\": 0.5, \"audio\": 0.1, \"transcription\": 0.2, \"metadata\": 0.2}"}
+{"query": "foggy scene with crickets chirping in the background", "reference": "{\"visual\": 0.5, \"audio\": 0.3, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "audience laughing during Meridian", "reference": "{\"visual\": 0.1, \"audio\": 0.5, \"transcription\": 0.2, \"metadata\": 0.2}"}
+{"query": "Chef's Table behind the scenes", "reference": "{\"visual\": 0.5, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.3}"}
+{"query": "piano solo during a flashback", "reference": "{\"visual\": 0.3, \"audio\": 0.5, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "Fatima explaining while looking around", "reference": "{\"visual\": 0.4, \"audio\": 0.1, \"transcription\": 0.4, \"metadata\": 0.1}"}
+{"query": "Nina talking about life after retirement", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "birds singing in the meadow", "reference": "{\"visual\": 0.3, \"audio\": 0.5, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "Alex talking about moving to a new country", "reference": "{\"visual\": 0.1, \"audio\": 0.2, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "construction noise near the airport", "reference": "{\"visual\": 0.2, \"audio\": 0.6, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "Olivia narrating a documentary about vaccine development", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "Sarah discuss about the digital transformation in healthcare", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "National Geographic original film", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.6}"}
+{"query": "best romance special of 2024", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
+{"query": "folk music playing over a romantic scene", "reference": "{\"visual\": 0.3, \"audio\": 0.5, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "aerial shot of the coastline", "reference": "{\"visual\": 0.8, \"audio\": 0.0, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "UFC match recap", "reference": "{\"visual\": 0.3, \"audio\": 0.1, \"transcription\": 0.3, \"metadata\": 0.3}"}
+{"query": "Carlos narrating a documentary about renewable energy", "reference": "{\"visual\": 0.2, \"audio\": 0.2, \"transcription\": 0.4, \"metadata\": 0.2}"}
+{"query": "sustainable energy explained", "reference": "{\"visual\": 0.3, \"audio\": 0.1, \"transcription\": 0.3, \"metadata\": 0.3}"}
+{"query": "gunshot sound in adventure movie", "reference": "{\"visual\": 0.1, \"audio\": 0.6, \"transcription\": 0.0, \"metadata\": 0.3}"}
+{"query": "Wild Isles behind the scenes", "reference": "{\"visual\": 0.4, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.4}"}
+{"query": "The Crown season 4", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.6}"}
+{"query": "presentation on challenges facing small businesses", "reference": "{\"visual\": 0.3, \"audio\": 0.1, \"transcription\": 0.4, \"metadata\": 0.2}"}
+{"query": "crowd walking through Mexico City streets", "reference": "{\"visual\": 0.6, \"audio\": 0.0, \"transcription\": 0.0, \"metadata\": 0.4}"}
+{"query": "crowd cheering at the conference while Olivia performs", "reference": "{\"visual\": 0.3, \"audio\": 0.4, \"transcription\": 0.1, \"metadata\": 0.2}"}
+{"query": "Elena walking through a park", "reference": "{\"visual\": 0.6, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.3}"}
+{"query": "Tom Hanks", "reference": "{\"visual\": 0.3, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.6}"}
+{"query": "dark church in Breaking Bad", "reference": "{\"visual\": 0.5, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.4}"}
+{"query": "lecture about ancient civilizations", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "the guide reading an excerpt from the book aloud", "reference": "{\"visual\": 0.2, \"audio\": 0.3, \"transcription\": 0.4, \"metadata\": 0.1}"}
+{"query": "Yuki singing while walking through Istanbul", "reference": "{\"visual\": 0.4, \"audio\": 0.3, \"transcription\": 0.1, \"metadata\": 0.2}"}
+{"query": "gunshot sound in romance movie", "reference": "{\"visual\": 0.1, \"audio\": 0.5, \"transcription\": 0.0, \"metadata\": 0.4}"}
+{"query": "harmonica solo during a romantic scene", "reference": "{\"visual\": 0.2, \"audio\": 0.5, \"transcription\": 0.0, \"metadata\": 0.3}"}
+{"query": "Lionel Messi", "reference": "{\"visual\": 0.3, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.6}"}
+{"query": "loud bang echoing through alley", "reference": "{\"visual\": 0.2, \"audio\": 0.6, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "2020 comedy film", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
+{"query": "elephant running across a muddy trail", "reference": "{\"visual\": 0.8, \"audio\": 0.0, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "National Geographic original series", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.6}"}
+{"query": "rainy scene with distant traffic in the background", "reference": "{\"visual\": 0.6, \"audio\": 0.2, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "people protesting in a classroom with electronic music", "reference": "{\"visual\": 0.5, \"audio\": 0.3, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "the CEO demonstrating play the guitar on stage", "reference": "{\"visual\": 0.5, \"audio\": 0.2, \"transcription\": 0.1, \"metadata\": 0.2}"}
+{"query": "Taylor Swift best moments", "reference": "{\"visual\": 0.4, \"audio\": 0.2, \"transcription\": 0.1, \"metadata\": 0.3}"}
+{"query": "Meridian episode 1", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
+{"query": "voiceover explaining the restoration process", "reference": "{\"visual\": 0.3, \"audio\": 0.2, \"transcription\": 0.4, \"metadata\": 0.1}"}
+{"query": "The Crown season 4", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.6}"}
+{"query": "David Attenborough best moments", "reference": "{\"visual\": 0.3, \"audio\": 0.2, \"transcription\": 0.2, \"metadata\": 0.3}"}
+{"query": "harmonica playing softly", "reference": "{\"visual\": 0.1, \"audio\": 0.7, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "Alex explaining in front of journalists at a press conference", "reference": "{\"visual\": 0.4, \"audio\": 0.1, \"transcription\": 0.4, \"metadata\": 0.1}"}
+{"query": "Kevin narrating a documentary about sustainable farming", "reference": "{\"visual\": 0.2, \"audio\": 0.2, \"transcription\": 0.4, \"metadata\": 0.2}"}
+{"query": "best thriller special of 2023", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
+{"query": "the chef answering questions about blockchain technology", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "Lionel Messi score a try", "reference": "{\"visual\": 0.5, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.4}"}
+{"query": "crowd cheering at the award ceremony while Carlos performs", "reference": "{\"visual\": 0.3, \"audio\": 0.4, \"transcription\": 0.1, \"metadata\": 0.2}"}
+{"query": "Leo walking through the beach", "reference": "{\"visual\": 0.6, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.3}"}
+{"query": "heavy rain sound in the background", "reference": "{\"visual\": 0.1, \"audio\": 0.8, \"transcription\": 0.0, \"metadata\": 0.1}"}
+{"query": "slow motion replay of a spectacular save", "reference": "{\"visual\": 0.8, \"audio\": 0.0, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "Raj describing while looking around", "reference": "{\"visual\": 0.3, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.1}"}
+{"query": "keynote speech about evolution of street food culture", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "the journalist answering questions about renewable energy", "reference": "{\"visual\": 0.3, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.1}"}
+{"query": "Adele highlights", "reference": "{\"visual\": 0.3, \"audio\": 0.2, \"transcription\": 0.1, \"metadata\": 0.4}"}
+{"query": "action movie from 2023", "reference": "{\"visual\": 0.1, \"audio\": 0.0, \"transcription\": 0.0, \"metadata\": 0.9}"}
+{"query": "the coach reading the research findings aloud", "reference": "{\"visual\": 0.3, \"audio\": 0.3, \"transcription\": 0.3, \"metadata\": 0.1}"}
+{"query": "thriller short film from 2021", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.6}"}
+{"query": "the scientist demonstrating paint with watercolors on stage", "reference": "{\"visual\": 0.5, \"audio\": 0.1, \"transcription\": 0.2, \"metadata\": 0.2}"}
+{"query": "a woman taking a phone call next to a motorcycle", "reference": "{\"visual\": 0.6, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.2}"}
+{"query": "crowd cheering in the stadium", "reference": "{\"visual\": 0.3, \"audio\": 0.5, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "artificial intelligence explained", "reference": "{\"visual\": 0.2, \"audio\": 0.1, \"transcription\": 0.5, \"metadata\": 0.2}"}
+{"query": "heavy rain sound in the background", "reference": "{\"visual\": 0.1, \"audio\": 0.8, \"transcription\": 0.0, \"metadata\": 0.1}"}
+{"query": "a woman whispering to someone in a corridor", "reference": "{\"visual\": 0.4, \"audio\": 0.3, \"transcription\": 0.2, \"metadata\": 0.1}"}
+{"query": "eagle sitting down and growling", "reference": "{\"visual\": 0.5, \"audio\": 0.3, \"transcription\": 0.0, \"metadata\": 0.2}"}
+{"query": "fast break in basketball", "reference": "{\"visual\": 0.6, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.3}"}
+{"query": "fans singing at the comedy show while Daniel performs", "reference": "{\"visual\": 0.3, \"audio\": 0.4, \"transcription\": 0.1, \"metadata\": 0.2}"}
+{"query": "thriller film from 2023", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
+{"query": "Scott riding a canoe", "reference": "{\"visual\": 0.6, \"audio\": 0.0, \"transcription\": 0.1, \"metadata\": 0.3}"}
+{"query": "horror mini-series from 2023", "reference": "{\"visual\": 0.1, \"audio\": 0.1, \"transcription\": 0.1, \"metadata\": 0.7}"}
