@@ -47,3 +47,7 @@ notebooks/ground_truth.json
 notebooks/benchmark_results.png
 notebooks/.ipynb_checkpoints/
 terraform/terraform.tfstate.d/
+
+# CDK
+cdk/cdk.out/
+cdk/.venv/

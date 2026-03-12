@@ -432,32 +432,60 @@ The vector engine is set at project creation and cannot be changed after (the Op
 
 - AWS account with [Amazon Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) enabled for Nova MME, Nova Lite, and Nova Micro
 - [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) configured with a named profile
-- [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.5
+- [Node.js](https://nodejs.org/) ≥ 18 (for AWS CDK CLI)
+- [AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html) v2 (`npm install -g aws-cdk`)
 - [Docker](https://docs.docker.com/get-docker/) (for building the pipeline Lambda container)
 - Python 3.11+
 
 ## Deployment
 
-One-command deployment creates all infrastructure, builds and pushes the Docker image, packages Lambda functions, deploys the frontend, and creates a test user:
+Infrastructure is managed with AWS CDK (Python). From the `cdk/` directory:
 
 ```bash
-cd deployment
-./deploy.sh <aws-profile> <region> <email>
+cd cdk
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-# Example:
-./deploy.sh my-profile us-east-1 user@example.com
+# Preview changes
+cdk diff
+
+# Deploy everything
+cdk deploy
 ```
 
-The script outputs the app URL, API endpoint, and video CDN URL on completion.
+CDK deploys all infrastructure (OpenSearch, Step Functions, Lambda functions, API Gateway, CloudFront, Cognito, DynamoDB, SQS), builds the Docker image for the pipeline Lambda, packages API Lambda functions, and deploys the static frontend.
+
+**After first deploy**, create an S3 Vectors bucket manually (not yet supported by CloudFormation):
+
+```python
+import boto3
+s3vectors = boto3.client('s3vectors', region_name='us-east-1')
+s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUNT_ID>')
+```
+
+**Create a test user** in the Cognito User Pool:
+
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id <POOL_ID> \
+  --username user@example.com \
+  --temporary-password 'TempPass@123' \
+  --user-attributes Name=email,Value=user@example.com Name=email_verified,Value=true \
+  --region us-east-1
+```
+
+The CDK outputs include the CloudFront URL, API endpoint, and video CDN domain.
 
 ## Cleanup
 
 ```bash
-cd deployment
-./teardown.sh <aws-profile> <region>
+cd cdk
+source .venv/bin/activate
+cdk destroy
 ```
 
-> **Note:** The OpenSearch domain (OR1 instance with S3 Vectors engine) can take 20–30 minutes to fully delete.
+> **Note:** The OpenSearch domain (OR1 instance with S3 Vectors engine) can take 20–30 minutes to fully delete. The S3 Vectors bucket must be deleted manually via the AWS CLI or console.
 
 ## Benchmarks
 
@@ -494,9 +522,11 @@ Test videos:
 │   ├── vector_store.py                # S3 Vectors operations
 │   ├── prompt_analyzer.py             # LLM query weight analysis
 │   └── dynamodb_store.py              # DynamoDB operations
-├── terraform/                   # Infrastructure as code
+├── cdk/                         # AWS CDK infrastructure (Python)
+│   ├── stacks/                        # Main stack definition
+│   └── components/                    # Modular constructs (storage, compute, search, etc.)
 ├── frontend-static/             # Vanilla JS SPA (no build step)
-├── deployment/                  # One-command deploy/teardown scripts
+├── deployment/                  # Dockerfile for pipeline Lambda container
 └── notebooks/                   # Benchmark notebooks
 ```
 

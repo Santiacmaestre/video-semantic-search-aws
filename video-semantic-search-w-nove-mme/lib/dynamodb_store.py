@@ -8,9 +8,9 @@ from decimal import Decimal
 aws_region = os.getenv('AWS_REGION', 'us-east-1')
 dynamodb = boto3.resource('dynamodb', region_name=aws_region)
 
-VIDEOS_TABLE = 'video-search-v2-videos'
-SEGMENTS_TABLE = 'video-search-v2-segments'
-ENTITIES_TABLE = 'video-search-v2-entities'
+VIDEOS_TABLE = os.environ.get('VIDEOS_TABLE', 'video-search-v2-videos')
+SEGMENTS_TABLE = os.environ.get('SEGMENTS_TABLE', 'video-search-v2-segments')
+ENTITIES_TABLE = os.environ.get('ENTITIES_TABLE', 'video-search-v2-entities')
 
 
 def put_video(video_id: str, filename: str, s3_uri: str, status: str = 'pending'):

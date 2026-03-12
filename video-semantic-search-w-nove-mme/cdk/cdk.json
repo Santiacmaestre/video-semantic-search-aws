@@ -1,0 +1,7 @@
+{
+  "app": "python3 app.py",
+  "context": {
+    "project_name": "video-search-v2",
+    "environment": "prod"
+  }
+}

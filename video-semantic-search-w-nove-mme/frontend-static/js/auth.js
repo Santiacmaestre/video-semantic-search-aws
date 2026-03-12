@@ -1,4 +1,7 @@
 // Cognito authentication with native login
+const COGNITO_REGION = CONFIG.COGNITO_DOMAIN.split('.auth.')[1]?.split('.amazoncognito')[0] || 'us-east-1';
+const COGNITO_IDP_URL = `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/`;
+
 class Auth {
     getIdToken() {
         return localStorage.getItem('idToken');
@@ -15,23 +18,25 @@ class Auth {
     }
 
     async login(email, password) {
-        const response = await fetch(`https://cognito-idp.us-east-1.amazonaws.com/`, {
+        const response = await fetch(COGNITO_IDP_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-amz-json-1.1',
                 'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth'
             },
             body: JSON.stringify({
-                AuthFlow: 'USER_PASSWORD_AUTH',
+                AuthFlow: 'USER_AUTH',
                 ClientId: CONFIG.COGNITO_CLIENT_ID,
-                AuthParameters: { USERNAME: email, PASSWORD: password }
+                AuthParameters: {
+                    USERNAME: email,
+                    PASSWORD: password,
+                    PREFERRED_CHALLENGE: 'PASSWORD'
+                }
             })
         });
         const data = await response.json();
         if (data.AuthenticationResult) {
-            localStorage.setItem('idToken', data.AuthenticationResult.IdToken);
-            localStorage.setItem('accessToken', data.AuthenticationResult.AccessToken);
-            localStorage.setItem('refreshToken', data.AuthenticationResult.RefreshToken);
+            this._storeTokens(data.AuthenticationResult);
             return { success: true };
         }
         if (data.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
@@ -40,8 +45,14 @@ class Auth {
         throw new Error(data.message || data.__type || 'Login failed');
     }
 
+    _storeTokens(authResult) {
+        localStorage.setItem('idToken', authResult.IdToken);
+        localStorage.setItem('accessToken', authResult.AccessToken);
+        localStorage.setItem('refreshToken', authResult.RefreshToken);
+    }
+
     async respondToNewPasswordChallenge(email, newPassword, session) {
-        const response = await fetch(`https://cognito-idp.us-east-1.amazonaws.com/`, {
+        const response = await fetch(COGNITO_IDP_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-amz-json-1.1',
@@ -56,9 +67,7 @@ class Auth {
         });
         const data = await response.json();
         if (data.AuthenticationResult) {
-            localStorage.setItem('idToken', data.AuthenticationResult.IdToken);
-            localStorage.setItem('accessToken', data.AuthenticationResult.AccessToken);
-            localStorage.setItem('refreshToken', data.AuthenticationResult.RefreshToken);
+            this._storeTokens(data.AuthenticationResult);
             return { success: true };
         }
         throw new Error(data.message || 'Challenge failed');
@@ -68,7 +77,7 @@ class Auth {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) return false;
         try {
-            const response = await fetch(`https://cognito-idp.us-east-1.amazonaws.com/`, {
+            const response = await fetch(COGNITO_IDP_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-amz-json-1.1',
@@ -87,11 +96,26 @@ class Auth {
                     localStorage.setItem('accessToken', data.AuthenticationResult.AccessToken);
                 return true;
             }
-        } catch (e) { console.error('Refresh failed:', e); }
+        } catch (e) { console.error('Refresh failed:', e.message); }
         return false;
     }
 
-    logout() {
+    async logout() {
+        try {
+            const accessToken = localStorage.getItem('accessToken');
+            if (accessToken) {
+                await fetch(COGNITO_IDP_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-amz-json-1.1',
+                        'X-Amz-Target': 'AWSCognitoIdentityProviderService.GlobalSignOut'
+                    },
+                    body: JSON.stringify({ AccessToken: accessToken })
+                });
+            }
+        } catch (e) {
+            console.error('Server-side logout failed:', e.message);
+        }
         localStorage.removeItem('idToken');
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
