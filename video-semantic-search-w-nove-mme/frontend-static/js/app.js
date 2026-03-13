@@ -78,8 +78,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     btn.textContent = 'Sign In';
 });
 
-document.getElementById('logoutBtn')?.addEventListener('click', () => { auth.signOut(); showLoginScreen(); });
-document.getElementById('projectLogoutBtn')?.addEventListener('click', () => { auth.signOut(); showLoginScreen(); });
+document.getElementById('logoutBtn')?.addEventListener('click', () => { auth.logout(); showLoginScreen(); });
+document.getElementById('projectLogoutBtn')?.addEventListener('click', () => { auth.logout(); showLoginScreen(); });
 document.getElementById('backToProjects')?.addEventListener('click', () => { stopPolling(); showProjectScreen(); });
 
 // ============================================
