@@ -780,20 +780,28 @@ function showCreateEntityModal() {
         btn.disabled = true;
         btn.textContent = 'Creating...';
 
-        // Step 1: Create entity and get presigned upload URL
-        const data = await apiCall('/entities', { method: 'POST', body: JSON.stringify({ name, project_id: activeProject?.project_id || '' }) });
-        if (!data?.entity_id) { btn.disabled = false; btn.textContent = 'Create Entity'; return; }
+        try {
+            // Step 1: Create entity and get presigned upload URL
+            const data = await apiCall('/entities', { method: 'POST', body: JSON.stringify({ name, project_id: activeProject?.project_id || '' }) });
+            if (!data?.entity_id) { btn.disabled = false; btn.textContent = 'Create Entity'; return; }
 
-        // Step 2: Upload image to S3
-        btn.textContent = 'Uploading image...';
-        await fetch(data.upload_url, { method: 'PUT', body: file, headers: { 'Content-Type': 'image/jpeg' } });
+            // Step 2: Upload image to S3
+            btn.textContent = 'Uploading image...';
+            const uploadResp = await fetch(data.upload_url, { method: 'PUT', body: file, headers: { 'Content-Type': 'image/jpeg' } });
+            if (!uploadResp.ok) throw new Error('Image upload failed');
 
-        // Step 3: Generate embedding
-        btn.textContent = 'Generating embedding...';
-        await apiCall(`/entities/${data.entity_id}`, { method: 'PUT', body: JSON.stringify({ generate_embedding: true }) });
+            // Step 3: Generate embedding
+            btn.textContent = 'Generating embedding...';
+            await apiCall(`/entities/${data.entity_id}`, { method: 'PUT', body: JSON.stringify({ generate_embedding: true }) });
 
-        d.remove();
-        loadEntities();
+            d.remove();
+            loadEntities();
+        } catch (e) {
+            console.error('Entity creation failed:', e);
+            alert(`Entity creation failed: ${e.message}`);
+            btn.disabled = false;
+            btn.textContent = 'Create Entity';
+        }
     };
     d.addEventListener('click', (e) => { if (e.target === d) d.remove(); });
 }

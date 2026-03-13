@@ -233,6 +233,8 @@ class ComputeConstruct(Construct):
 
         self.entity_fn = _make_zip_lambda(
             "EntityFunction", "entity_function.lambda_handler",
+            use_layer=True,
+            timeout_secs=60,
             environment={
                 "ENTITIES_TABLE": entities_table.table_name,
                 "PROJECTS_TABLE": projects_table.table_name,
