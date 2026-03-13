@@ -13,7 +13,7 @@ from aws_cdk import (
     aws_ecr_assets as ecr_assets,
     BundlingOptions,
 )
-from config import LAMBDA_RUNTIME, NOVA_MODEL_ID, CLAUDE_MODEL_ID
+from config import LAMBDA_RUNTIME, NOVA_MODEL_ID, NOVA_LITE_MODEL_ID, CLAUDE_MODEL_ID
 
 # Absolute path to project root (parent of cdk/)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -100,10 +100,13 @@ class ComputeConstruct(Construct):
             ],
             resources=[
                 f"arn:aws:bedrock:us-east-1::foundation-model/{NOVA_MODEL_ID}",
+                # Nova Lite (us.* cross-region inference profile for captions/genre)
+                f"arn:aws:bedrock:us-east-1::foundation-model/{NOVA_LITE_MODEL_ID}",
+                f"arn:aws:bedrock:us-east-1:{account_id}:inference-profile/{NOVA_LITE_MODEL_ID}",
+                f"arn:aws:bedrock:*::foundation-model/{NOVA_LITE_MODEL_ID.replace('us.', '')}",
+                # Claude (global.* cross-region inference profile for weight analysis)
                 f"arn:aws:bedrock:us-east-1::foundation-model/{CLAUDE_MODEL_ID}",
-                # Cross-region inference profiles use account-scoped ARNs
                 f"arn:aws:bedrock:us-east-1:{account_id}:inference-profile/{CLAUDE_MODEL_ID}",
-                # Converse API resolves global.* to regionless base foundation model ARN
                 f"arn:aws:bedrock:*::foundation-model/{CLAUDE_MODEL_ID.replace('global.', '')}",
             ],
         ))
@@ -113,11 +116,18 @@ class ComputeConstruct(Construct):
             resources=["*"],
         ))
 
-        # Rekognition (celebrity detection only)
+        # Rekognition (celebrity detection + face collections for entities)
         self.lambda_role.add_to_policy(iam.PolicyStatement(
             actions=[
                 "rekognition:StartCelebrityRecognition",
                 "rekognition:GetCelebrityRecognition",
+                "rekognition:CreateCollection",
+                "rekognition:DeleteCollection",
+                "rekognition:IndexFaces",
+                "rekognition:SearchFacesByImage",
+                "rekognition:DeleteFaces",
+                "rekognition:ListFaces",
+                "rekognition:DetectFaces",
             ],
             resources=["*"],
         ))
