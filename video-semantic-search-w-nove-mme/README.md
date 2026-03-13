@@ -26,6 +26,8 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 
 ## Architecture
 
+### High-Level Overview
+
 ```
 ┌──────────┐     ┌────────────┐     ┌─────────────┐     ┌──────────────────┐
 │  Browser  │────▶│ CloudFront │────▶│  S3 Static  │     │   Cognito Auth   │
@@ -37,27 +39,269 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
                        │
               ┌────────┴────────┐
               ▼                 ▼
-          DynamoDB          OpenSearch
-       (metadata)        (hybrid search)
-
-Video Processing Pipeline (Step Functions):
-
-  S3 Upload ──▶ Orchestrator ──▶ Shot Segmentation (ffmpeg)
-                                        │
-                          ┌─────────────┼──────────────┐
-                          ▼             ▼              ▼
-                     Nova MME      Transcribe     Rekognition
-                    (visual +     (speech →       (celebrity
-                     audio emb)    text)           detection)
-                          └─────────────┼──────────────┘
-                                        ▼
-                                 Caption + Genre
-                                  (Nova Lite)
-                                        │
-                                        ▼
-                                  Merge Lambda
-                            (OpenSearch + S3 Vectors)
+          DynamoDB          OpenSearch ◄──── S3 Vectors
+       (metadata)        (hybrid search)    (kNN backing store)
 ```
+
+### Video Ingestion Pipeline (Step Functions)
+
+```
+                         ┌─────────────────────┐
+                         │    S3 Video Upload   │
+                         │   (triggers event)   │
+                         └──────────┬──────────┘
+                                    │
+                                    ▼
+                         ┌─────────────────────┐
+                         │    Orchestrator λ    │
+                         │  (starts execution)  │
+                         └──────────┬──────────┘
+                                    │
+                                    ▼
+                     ┌───────────────────────────────┐
+                     │      ShotSegmentation λ       │
+                     │  ffmpeg scene detection on     │
+                     │  downloaded video; outputs     │
+                     │  segment timestamps            │
+                     │  retry: 2x, no catch           │
+                     └──────────────┬────────────────┘
+                                    │
+                                    ▼
+                     ┌───────────────────────────────┐
+                     │        PrepareParallel        │
+                     │  (Pass: reshapes payload,     │
+                     │   adds shot_segments array)   │
+                     └──────────────┬────────────────┘
+                                    │
+                ┌───────────────────┼───────────────────┐
+                │                   │                   │
+                ▼                   ▼                   ▼
+  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+  │  Embeddings λ    │ │ Transcription λ  │ │ CelebrityDetect λ│
+  │                  │ │                  │ │                  │
+  │ Nova MME model:  │ │ AWS Transcribe   │ │ Rekognition      │
+  │ • visual embed   │ │ speech-to-text   │ │ per-segment      │
+  │ • audio embed    │ │ + transcript     │ │ celebrity ID     │
+  │ per segment      │ │   embedding      │ │                  │
+  │                  │ │                  │ │                  │
+  │ Stores visual +  │ │ Stores transc.   │ │                  │
+  │ audio vectors in │ │ vectors in       │ │                  │
+  │ S3 Vectors       │ │ S3 Vectors       │ │                  │
+  │                  │ │                  │ │                  │
+  │ retry: 2x       │ │ retry: 1x       │ │ retry: 1x       │
+  │ no catch         │ │ catch → Pass     │ │ catch → Pass     │
+  │                  │ │ (empty result)   │ │ (empty result)   │
+  └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘
+           │                    │                     │
+           │        results[0]  │       results[1]    │  results[2]
+           └────────────────────┼─────────────────────┘
+                                │
+                                ▼
+                  ┌───────────────────────────────┐
+                  │      PrepareCaptionInput      │
+                  │  (Pass: extracts video_id,    │
+                  │   metadata_model, and         │
+                  │   transcription from [1])     │
+                  └──────────────┬────────────────┘
+                                 │
+                                 ▼
+                  ┌───────────────────────────────┐
+                  │      GenerateCaptions λ       │
+                  │  Nova Lite LLM generates      │
+                  │  text caption + genre per      │
+                  │  segment using transcription   │
+                  │                               │
+                  │  retry: 1x                    │
+                  │  catch → skip to PrepareMerge │
+                  └──────────────┬────────────────┘
+                                 │
+                                 ▼
+                  ┌───────────────────────────────┐
+                  │        PrepareMerge           │
+                  │  (Pass: assembles all results │
+                  │   into single payload)        │
+                  └──────────────┬────────────────┘
+                                 │
+                                 ▼
+                  ┌───────────────────────────────┐
+                  │          Merge λ              │
+                  │  • Reads vectors from         │
+                  │    S3 Vectors                 │
+                  │  • Index segments to          │
+                  │    OpenSearch (metadata +     │
+                  │    vector references)         │
+                  │  • Update video status →      │
+                  │    "completed" in DynamoDB    │
+                  │                               │
+                  │  retry: 2x                    │
+                  │  catch → MarkFailed λ         │
+                  └──────────────┬────────────────┘
+                                 │
+                        ┌────────┴────────┐
+                        ▼                 ▼
+                   ┌─────────┐     ┌─────────────┐
+                   │ Success │     │ MarkFailed λ │
+                   │  (end)  │     │ sets video   │
+                   └─────────┘     │ status →     │
+                                   │ "failed"     │
+                                   └─────────────┘
+```
+
+**Data produced per segment during ingestion:**
+
+```
+Raw video → segments → 3 vectors/segment (visual, audio, transcription)
+                      + transcript text/segment
+                      + celebrities/segment
+                      + caption + genre/segment
+                      ─────────────────────────→ OpenSearch index
+                                                  + S3 Vectors
+```
+
+### Search Workflow (API Lambda → OpenSearch → S3 Vectors)
+
+```
+                                  ┌──────────────┐
+                                  │   Frontend   │
+                                  │  (Browser)   │
+                                  └──────┬───────┘
+                                         │ POST /api/search?project_id=xxx
+                                         │ body: { "query": "car chase @tom_cruise" }
+                                         ▼
+                              ┌──────────────────────┐
+                              │    API Gateway        │
+                              │  (Cognito JWT auth +  │
+                              │   throttle 10 req/s)  │
+                              └──────────┬───────────┘
+                                         │
+                                         ▼
+                              ┌──────────────────────┐
+                              │   Search Lambda      │
+                              │  search_function.py  │
+                              └──────────┬───────────┘
+                                         │
+                          ┌──────────────┼──────────────┐
+                          │    DynamoDB                  │
+                          │    (get project config:      │
+                          │     analyzer_model_id,       │
+                          │     vector_engine)           │
+                          └──────────────┼──────────────┘
+                                         │
+                                         ▼
+              ╔══════════════════════════════════════════════════════╗
+              ║  PHASE 1: Parallel Preprocessing (ThreadPoolExecutor)║
+              ╠════════════╦════════════╦════════════╦══════════════╣
+              ║            ║            ║            ║              ║
+              ▼            ▼            ▼            ▼              ▼
+        ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+        │ Bedrock  │ │ Bedrock  │ │ Bedrock  │ │ Bedrock  │ │ S3       │
+        │ Converse │ │ Nova MME │ │ Nova MME │ │ Nova MME │ │ Vectors  │
+        │ (Haiku)  │ │ text emb │ │ text emb │ │ text emb │ │          │
+        │          │ │          │ │          │ │          │ │ get_     │
+        │ "Assign  │ │ purpose: │ │ purpose: │ │ purpose: │ │ vectors  │
+        │ modality │ │ GENERIC_ │ │ GENERIC_ │ │ TEXT_    │ │ for      │
+        │ weights  │ │ RETRIEVAL│ │ RETRIEVAL│ │ RETRIEVAL│ │ @entity  │
+        │ for this │ │          │ │          │ │          │ │ image    │
+        │ query"   │ │ "visual" │ │ "audio"  │ │ "transc."│ │ embedding│
+        └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘
+             │            │            │            │              │
+             ▼            ▼            ▼            ▼              ▼
+        weights =    vectors =   vectors =    vectors =     entity_emb =
+        {visual:0.4  {visual:    {audio:      {transcr:     [1024 floats]
+         audio:0.1    [1024]}     [1024]}      [1024]}
+         transc:0.2
+         meta:0.3}
+              ║            ║            ║            ║              ║
+              ╚════════════╩════════════╩════════════╩══════════════╝
+                                         │
+                            Drop modalities with weight < 5%
+                            Renormalize remaining weights
+                                         │
+                                         ▼
+              ╔══════════════════════════════════════════════════════╗
+              ║  PHASE 2: OpenSearch Hybrid Query                   ║
+              ╚═══════════════════════╤══════════════════════════════╝
+                                      │
+                                      ▼
+                           ┌─────────────────────┐
+                           │    OpenSearch        │
+                           │    Domain            │
+                           │                     │
+                           │  Index: segments-{id}│
+                           │                     │
+                           │  hybrid query:      │
+                           │  ┌─────────────────┐│
+                           │  │ BM25 multi_match ││
+                           │  │ people^3,        ││
+                           │  │ caption^2, title ││
+                           │  │ weight: 0.3      ││
+                           │  ├─────────────────┤│
+                           │  │ kNN visual_vector││
+                           │  │ weight: 0.4      ││
+                           │  ├─────────────────┤│
+                           │  │ kNN audio_vector ││
+                           │  │ (dropped < 5%)   ││
+                           │  ├─────────────────┤│
+                           │  │ kNN transcr_vec  ││
+                           │  │ weight: 0.2      ││
+                           │  └────────┬────────┘│
+                           │           │         │
+                           │  search_pipeline:   │
+                           │  1. min_max norm    │
+                           │  2. weighted arith. │
+                           │     mean fusion     │
+                           │           │         │
+                           │  (kNN resolved via  │
+                           │   S3 Vectors engine)│
+                           └───────────┬─────────┘
+                                       │
+                                       │ scored + ranked hits
+                                       ▼
+              ╔══════════════════════════════════════════════════════╗
+              ║  PHASE 3: Enrich Results                           ║
+              ╚═══════════════════════╤══════════════════════════════╝
+                                      │
+                           ┌──────────▼──────────┐
+                           │    DynamoDB         │
+                           │    videos table     │
+                           │    (lookup filename │
+                           │     per video_id)   │
+                           └──────────┬──────────┘
+                                      │
+                                      ▼
+              ╔══════════════════════════════════════════════════════╗
+              ║  PHASE 4: Entity Re-rank (optional)                ║
+              ║  Only when @entity + text query combined           ║
+              ╚═══════════════════════╤══════════════════════════════╝
+                                      │
+                           ┌──────────▼──────────┐
+                           │    S3 Vectors       │
+                           │    get_vectors()    │
+                           │    (fetch visual    │
+                           │     vec per result) │
+                           └──────────┬──────────┘
+                                      │
+                           cosine_sim(entity_emb, result_visual_vec)
+                           blended = 0.5 * search_score + 0.5 * sim
+                           re-sort by blended score
+                                      │
+                                      ▼
+                           ┌─────────────────────┐
+                           │  Return to frontend  │
+                           │  {results, weights,  │
+                           │   reasoning, timings} │
+                           └─────────────────────┘
+```
+
+**Service interactions during search:**
+
+| Service | Role |
+|---|---|
+| **DynamoDB** | Project config lookup, video filename enrichment, entity name-to-ID resolution |
+| **Bedrock (Haiku)** | LLM weight analysis — decides how much each modality matters for this query |
+| **Bedrock (Nova MME)** | Converts query text into 3 embedding vectors (visual/audio/transcription purpose) |
+| **OpenSearch** | Executes hybrid BM25 + kNN query with inline score fusion pipeline |
+| **S3 Vectors** | Backing store for kNN vectors (queried transparently by OpenSearch + directly for entity lookups and re-ranking) |
 
 ## How It Works
 
@@ -226,7 +470,7 @@ def _index_settings(dimension=1024, vector_engine='s3_vectors'):
     }
 ```
 
-The merge Lambda retrieves vectors from S3 Vectors and assembles the final document:
+Vectors are stored in S3 Vectors during the parallel processing phase (by the Embeddings and Transcription Lambdas). The Merge Lambda then reads them back and assembles the final OpenSearch document:
 
 ```python
 # merge_function.py — building the OpenSearch document

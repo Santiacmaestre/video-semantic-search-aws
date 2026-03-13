@@ -329,7 +329,7 @@ class ComputeConstruct(Construct):
             ),
             role=self.lambda_role,
             memory_size=1024,
-            timeout=Duration.seconds(300),
+            timeout=Duration.seconds(900),
             log_retention=logs.RetentionDays.TWO_WEEKS,
             ephemeral_storage_size=Size.gibibytes(10),
             environment={
