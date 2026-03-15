@@ -708,33 +708,129 @@ def generate_training_dataset(
     print(f"  Output file: {output_file}")
 
 
-if __name__ == "__main__":
-    # Generate a few samples for review
-    print("=" * 70)
-    print("GENERATING SAMPLE QUERIES FOR REVIEW")
-    print("=" * 70)
+def generate_eval_dataset(
+    num_samples: int = 100,
+    output_file: str = "eval_dataset_v2.jsonl",
+):
+    """Generate a holdout evaluation dataset with balanced modality distribution.
+
+    Output format: {"query": "...", "reference": "{\"visual\": ..., ...}"}
+    Ground truth contains only numeric weights (no reasoning) for clean evaluation.
+    """
+    print(f"Generating {num_samples} evaluation examples...")
+    print(f"Output file: {output_file}")
     print()
 
-    queries = generate_diverse_queries(20)
-    print("Sample generated queries (no API calls):")
-    for i, q in enumerate(queries[:20]):
-        print(f"  {i+1:2d}. {q}")
+    # Balanced distribution for eval: 30 visual, 20 audio, 20 transcription, 20 metadata, 10 balanced
+    category_counts = {
+        "visual_dominant": int(num_samples * 0.30),
+        "audio_dominant": int(num_samples * 0.20),
+        "transcription_dominant": int(num_samples * 0.20),
+        "metadata_dominant": int(num_samples * 0.20),
+    }
+    category_counts["balanced"] = num_samples - sum(category_counts.values())
 
-    print()
-    print("=" * 70)
-    print("TESTING WITH NOVA PREMIER (10 samples)")
-    print("=" * 70)
-    print()
+    queries_by_category = {}
+    for category, count in category_counts.items():
+        templates = QUERY_TEMPLATES[category]
+        cat_queries = []
+        for _ in range(count):
+            template = random.choice(templates)
+            cat_queries.append(generate_query_from_template(template, VOCABULARY))
+        queries_by_category[category] = cat_queries
 
-    for i, query in enumerate(queries[:10]):
-        print(f"[{i+1}/10] Query: \"{query}\"")
+    # Flatten and shuffle
+    all_queries = []
+    for cat, qs in queries_by_category.items():
+        for q in qs:
+            all_queries.append((cat, q))
+    random.shuffle(all_queries)
+
+    completed = []
+    for i, (cat, query) in enumerate(all_queries):
+        if (i + 1) % 10 == 0:
+            print(f"Processing {i + 1}/{num_samples} - Query: '{query}'")
+
         response = get_teacher_response(query)
-        if response:
-            w = " | ".join(f"{k}={response[k]}" for k in WEIGHT_KEYS)
-            print(f"  {w}")
-            print(f"  reasoning: {response['reasoning']}")
-            total = sum(response[k] for k in WEIGHT_KEYS)
-            print(f"  sum={total:.2f}")
-        else:
-            print("  FAILED")
+        if response is None:
+            print(f"  Skipping query due to errors")
+            continue
+
+        # Strip reasoning for clean eval ground truth
+        ref_weights = {k: response[k] for k in WEIGHT_KEYS}
+        completed.append({
+            "query": query,
+            "reference": json.dumps(ref_weights),
+        })
+
+        time.sleep(0.5)
+
+    with open(output_file, "w") as f:
+        for example in completed:
+            f.write(json.dumps(example) + "\n")
+
+    # Show distribution
+    dom_counts = {}
+    for ex in completed:
+        ref = json.loads(ex["reference"])
+        dom = max(WEIGHT_KEYS, key=lambda k: float(ref[k]))
+        dom_counts[dom] = dom_counts.get(dom, 0) + 1
+
+    print(f"\nEval generation complete!")
+    print(f"  Total examples: {len(completed)}")
+    print(f"  Distribution by dominant modality:")
+    for k in WEIGHT_KEYS:
+        print(f"    {k:15s}: {dom_counts.get(k, 0)}")
+    print(f"  Output file: {output_file}")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate training/eval data for modality weight distillation")
+    parser.add_argument("--mode", choices=["train", "eval", "both", "test"], default="both",
+                        help="train: training data only, eval: eval data only, both: both, test: quick 10-sample test")
+    parser.add_argument("--train-samples", type=int, default=10000, help="Number of training samples")
+    parser.add_argument("--eval-samples", type=int, default=100, help="Number of eval samples")
+    parser.add_argument("--train-output", default="distillation_dataset_v2.jsonl", help="Training output file")
+    parser.add_argument("--eval-output", default="eval_dataset_v2.jsonl", help="Eval output file")
+    args = parser.parse_args()
+
+    if args.mode == "test":
+        print("=" * 70)
+        print("QUICK TEST: 10 samples with Nova Premier")
+        print("=" * 70)
         print()
+        queries = generate_diverse_queries(10)
+        for i, query in enumerate(queries):
+            print(f"[{i+1}/10] Query: \"{query}\"")
+            response = get_teacher_response(query)
+            if response:
+                w = " | ".join(f"{k}={response[k]}" for k in WEIGHT_KEYS)
+                print(f"  {w}")
+                print(f"  reasoning: {response['reasoning']}")
+            else:
+                print("  FAILED")
+            print()
+
+    if args.mode in ("train", "both"):
+        print("=" * 70)
+        print(f"GENERATING TRAINING DATA ({args.train_samples} samples)")
+        print("=" * 70)
+        print()
+        generate_training_dataset(
+            num_samples=args.train_samples,
+            output_file=args.train_output,
+            checkpoint_file=args.train_output.replace(".jsonl", "_checkpoint.jsonl"),
+        )
+        print()
+
+    if args.mode in ("eval", "both"):
+        print("=" * 70)
+        print(f"GENERATING EVAL DATA ({args.eval_samples} samples)")
+        print("=" * 70)
+        print()
+        generate_eval_dataset(
+            num_samples=args.eval_samples,
+            output_file=args.eval_output,
+        )
