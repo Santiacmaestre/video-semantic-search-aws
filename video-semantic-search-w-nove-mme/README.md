@@ -708,7 +708,9 @@ s3vectors = boto3.client('s3vectors', region_name='us-east-1')
 s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUNT_ID>')
 ```
 
-**Create a test user** in the Cognito User Pool:
+### User Management
+
+**Create a user** in the Cognito User Pool:
 
 ```bash
 aws cognito-idp admin-create-user \
@@ -716,10 +718,50 @@ aws cognito-idp admin-create-user \
   --username user@example.com \
   --temporary-password 'TempPass@123' \
   --user-attributes Name=email,Value=user@example.com Name=email_verified,Value=true \
+  --message-action SUPPRESS \
   --region us-east-1
 ```
 
-The CDK outputs include the CloudFront URL, API endpoint, and video CDN domain.
+On first login, the user will be prompted to set a new permanent password (the temporary password is single-use). Password requirements: minimum 8 characters, with uppercase, lowercase, numbers, and symbols.
+
+**Reset a user's password** (forces a new password change on next login):
+
+```bash
+aws cognito-idp admin-reset-user-password \
+  --user-pool-id <POOL_ID> \
+  --username user@example.com \
+  --region us-east-1
+```
+
+**Set a permanent password directly** (skips the change-password prompt):
+
+```bash
+aws cognito-idp admin-set-user-password \
+  --user-pool-id <POOL_ID> \
+  --username user@example.com \
+  --password 'NewPass@123' \
+  --permanent \
+  --region us-east-1
+```
+
+**Delete a user:**
+
+```bash
+aws cognito-idp admin-delete-user \
+  --user-pool-id <POOL_ID> \
+  --username user@example.com \
+  --region us-east-1
+```
+
+**List all users:**
+
+```bash
+aws cognito-idp list-users \
+  --user-pool-id <POOL_ID> \
+  --region us-east-1
+```
+
+The CDK outputs include the CloudFront URL, API endpoint, Cognito User Pool ID, and video CDN domain.
 
 ## Cleanup
 
