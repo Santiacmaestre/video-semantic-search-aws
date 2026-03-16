@@ -56,26 +56,50 @@ function showMainApp() {
 // Login
 // ============================================
 
+let pendingChallenge = null;
+
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
     const errorDiv = document.getElementById('loginError');
     const btn = document.getElementById('loginBtn');
+    const newPasswordInput = document.getElementById('newPassword');
 
     btn.disabled = true;
-    btn.textContent = 'Signing in...';
     errorDiv.style.display = 'none';
 
     try {
-        await auth.login(email, password);
-        showProjectScreen();
+        if (pendingChallenge) {
+            btn.textContent = 'Setting password...';
+            const result = await auth.respondToNewPasswordChallenge(email, newPasswordInput.value, pendingChallenge.session);
+            if (result.success) {
+                pendingChallenge = null;
+                newPasswordInput.style.display = 'none';
+                newPasswordInput.required = false;
+                showProjectScreen();
+            }
+        } else {
+            btn.textContent = 'Signing in...';
+            const password = document.getElementById('loginPassword').value;
+            const result = await auth.login(email, password);
+            if (result.challenge === 'NEW_PASSWORD_REQUIRED') {
+                pendingChallenge = result;
+                document.getElementById('loginPassword').style.display = 'none';
+                newPasswordInput.style.display = '';
+                newPasswordInput.required = true;
+                newPasswordInput.focus();
+                btn.textContent = 'Set New Password';
+                btn.disabled = false;
+                return;
+            }
+            showProjectScreen();
+        }
     } catch (error) {
         errorDiv.textContent = error.message || 'Sign in failed';
         errorDiv.style.display = 'block';
     }
     btn.disabled = false;
-    btn.textContent = 'Sign In';
+    btn.textContent = pendingChallenge ? 'Set New Password' : 'Sign In';
 });
 
 document.getElementById('logoutBtn')?.addEventListener('click', () => { auth.logout(); showLoginScreen(); });
