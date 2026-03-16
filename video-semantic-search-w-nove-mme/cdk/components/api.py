@@ -43,6 +43,8 @@ class ApiConstruct(Construct):
             ),
             deploy_options=apigw.StageOptions(
                 stage_name="prod",
+                logging_level=apigw.MethodLoggingLevel.INFO,
+                data_trace_enabled=False,
                 access_log_destination=apigw.LogGroupLogDestination(access_log_group),
                 access_log_format=apigw.AccessLogFormat.custom(
                     '{"requestId":"$context.requestId",'

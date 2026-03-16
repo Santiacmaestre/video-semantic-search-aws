@@ -67,6 +67,7 @@ class CdnConstruct(Construct):
                 origin=origins.S3BucketOrigin.with_origin_access_control(videos_bucket),
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 compress=True,
+                response_headers_policy=security_headers_policy,
             ),
         )
 

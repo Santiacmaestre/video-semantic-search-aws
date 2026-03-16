@@ -90,6 +90,7 @@ class StorageConstruct(Construct):
             table_name=f"{project_name}-projects",
             partition_key=dynamodb.Attribute(name="project_id", type=dynamodb.AttributeType.STRING),
             billing=dynamodb.Billing.on_demand(),
+            point_in_time_recovery=True,
             global_secondary_indexes=[
                 dynamodb.GlobalSecondaryIndexPropsV2(
                     index_name="user_id-index",
