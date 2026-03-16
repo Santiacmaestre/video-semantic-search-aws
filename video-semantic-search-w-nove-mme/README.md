@@ -26,6 +26,8 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 
 ## Architecture
 
+### High-Level Overview
+
 ```
 ┌──────────┐     ┌────────────┐     ┌─────────────┐     ┌──────────────────┐
 │  Browser  │────▶│ CloudFront │────▶│  S3 Static  │     │   Cognito Auth   │
@@ -37,27 +39,269 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
                        │
               ┌────────┴────────┐
               ▼                 ▼
-          DynamoDB          OpenSearch
-       (metadata)        (hybrid search)
-
-Video Processing Pipeline (Step Functions):
-
-  S3 Upload ──▶ Orchestrator ──▶ Shot Segmentation (ffmpeg)
-                                        │
-                          ┌─────────────┼──────────────┐
-                          ▼             ▼              ▼
-                     Nova MME      Transcribe     Rekognition
-                    (visual +     (speech →       (celebrity
-                     audio emb)    text)           detection)
-                          └─────────────┼──────────────┘
-                                        ▼
-                                 Caption + Genre
-                                  (Nova Lite)
-                                        │
-                                        ▼
-                                  Merge Lambda
-                            (OpenSearch + S3 Vectors)
+          DynamoDB          OpenSearch ◄──── S3 Vectors
+       (metadata)        (hybrid search)    (kNN backing store)
 ```
+
+### Video Ingestion Pipeline (Step Functions)
+
+```
+                         ┌─────────────────────┐
+                         │    S3 Video Upload   │
+                         │   (triggers event)   │
+                         └──────────┬──────────┘
+                                    │
+                                    ▼
+                         ┌─────────────────────┐
+                         │    Orchestrator λ    │
+                         │  (starts execution)  │
+                         └──────────┬──────────┘
+                                    │
+                                    ▼
+                     ┌───────────────────────────────┐
+                     │      ShotSegmentation λ       │
+                     │  ffmpeg scene detection on     │
+                     │  downloaded video; outputs     │
+                     │  segment timestamps            │
+                     │  retry: 2x, no catch           │
+                     └──────────────┬────────────────┘
+                                    │
+                                    ▼
+                     ┌───────────────────────────────┐
+                     │        PrepareParallel        │
+                     │  (Pass: reshapes payload,     │
+                     │   adds shot_segments array)   │
+                     └──────────────┬────────────────┘
+                                    │
+                ┌───────────────────┼───────────────────┐
+                │                   │                   │
+                ▼                   ▼                   ▼
+  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+  │  Embeddings λ    │ │ Transcription λ  │ │ CelebrityDetect λ│
+  │                  │ │                  │ │                  │
+  │ Nova MME model:  │ │ AWS Transcribe   │ │ Rekognition      │
+  │ • visual embed   │ │ speech-to-text   │ │ per-segment      │
+  │ • audio embed    │ │ + transcript     │ │ celebrity ID     │
+  │ per segment      │ │   embedding      │ │                  │
+  │                  │ │                  │ │                  │
+  │ Stores visual +  │ │ Stores transc.   │ │                  │
+  │ audio vectors in │ │ vectors in       │ │                  │
+  │ S3 Vectors       │ │ S3 Vectors       │ │                  │
+  │                  │ │                  │ │                  │
+  │ retry: 2x       │ │ retry: 1x       │ │ retry: 1x       │
+  │ no catch         │ │ catch → Pass     │ │ catch → Pass     │
+  │                  │ │ (empty result)   │ │ (empty result)   │
+  └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘
+           │                    │                     │
+           │        results[0]  │       results[1]    │  results[2]
+           └────────────────────┼─────────────────────┘
+                                │
+                                ▼
+                  ┌───────────────────────────────┐
+                  │      PrepareCaptionInput      │
+                  │  (Pass: extracts video_id,    │
+                  │   metadata_model, and         │
+                  │   transcription from [1])     │
+                  └──────────────┬────────────────┘
+                                 │
+                                 ▼
+                  ┌───────────────────────────────┐
+                  │      GenerateCaptions λ       │
+                  │  Nova Lite LLM generates      │
+                  │  text caption + genre per      │
+                  │  segment using transcription   │
+                  │                               │
+                  │  retry: 1x                    │
+                  │  catch → skip to PrepareMerge │
+                  └──────────────┬────────────────┘
+                                 │
+                                 ▼
+                  ┌───────────────────────────────┐
+                  │        PrepareMerge           │
+                  │  (Pass: assembles all results │
+                  │   into single payload)        │
+                  └──────────────┬────────────────┘
+                                 │
+                                 ▼
+                  ┌───────────────────────────────┐
+                  │          Merge λ              │
+                  │  • Reads vectors from         │
+                  │    S3 Vectors                 │
+                  │  • Index segments to          │
+                  │    OpenSearch (metadata +     │
+                  │    vector references)         │
+                  │  • Update video status →      │
+                  │    "completed" in DynamoDB    │
+                  │                               │
+                  │  retry: 2x                    │
+                  │  catch → MarkFailed λ         │
+                  └──────────────┬────────────────┘
+                                 │
+                        ┌────────┴────────┐
+                        ▼                 ▼
+                   ┌─────────┐     ┌─────────────┐
+                   │ Success │     │ MarkFailed λ │
+                   │  (end)  │     │ sets video   │
+                   └─────────┘     │ status →     │
+                                   │ "failed"     │
+                                   └─────────────┘
+```
+
+**Data produced per segment during ingestion:**
+
+```
+Raw video → segments → 3 vectors/segment (visual, audio, transcription)
+                      + transcript text/segment
+                      + celebrities/segment
+                      + caption + genre/segment
+                      ─────────────────────────→ OpenSearch index
+                                                  + S3 Vectors
+```
+
+### Search Workflow (API Lambda → OpenSearch → S3 Vectors)
+
+```
+                                  ┌──────────────┐
+                                  │   Frontend   │
+                                  │  (Browser)   │
+                                  └──────┬───────┘
+                                         │ POST /api/search?project_id=xxx
+                                         │ body: { "query": "car chase @tom_cruise" }
+                                         ▼
+                              ┌──────────────────────┐
+                              │    API Gateway        │
+                              │  (Cognito JWT auth +  │
+                              │   throttle 10 req/s)  │
+                              └──────────┬───────────┘
+                                         │
+                                         ▼
+                              ┌──────────────────────┐
+                              │   Search Lambda      │
+                              │  search_function.py  │
+                              └──────────┬───────────┘
+                                         │
+                          ┌──────────────┼──────────────┐
+                          │    DynamoDB                  │
+                          │    (get project config:      │
+                          │     analyzer_model_id,       │
+                          │     vector_engine)           │
+                          └──────────────┼──────────────┘
+                                         │
+                                         ▼
+              ╔══════════════════════════════════════════════════════╗
+              ║  PHASE 1: Parallel Preprocessing (ThreadPoolExecutor)║
+              ╠════════════╦════════════╦════════════╦══════════════╣
+              ║            ║            ║            ║              ║
+              ▼            ▼            ▼            ▼              ▼
+        ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+        │ Bedrock  │ │ Bedrock  │ │ Bedrock  │ │ Bedrock  │ │ S3       │
+        │ Converse │ │ Nova MME │ │ Nova MME │ │ Nova MME │ │ Vectors  │
+        │ (Haiku)  │ │ text emb │ │ text emb │ │ text emb │ │          │
+        │          │ │          │ │          │ │          │ │ get_     │
+        │ "Assign  │ │ purpose: │ │ purpose: │ │ purpose: │ │ vectors  │
+        │ modality │ │ GENERIC_ │ │ GENERIC_ │ │ TEXT_    │ │ for      │
+        │ weights  │ │ RETRIEVAL│ │ RETRIEVAL│ │ RETRIEVAL│ │ @entity  │
+        │ for this │ │          │ │          │ │          │ │ image    │
+        │ query"   │ │ "visual" │ │ "audio"  │ │ "transc."│ │ embedding│
+        └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘
+             │            │            │            │              │
+             ▼            ▼            ▼            ▼              ▼
+        weights =    vectors =   vectors =    vectors =     entity_emb =
+        {visual:0.4  {visual:    {audio:      {transcr:     [1024 floats]
+         audio:0.1    [1024]}     [1024]}      [1024]}
+         transc:0.2
+         meta:0.3}
+              ║            ║            ║            ║              ║
+              ╚════════════╩════════════╩════════════╩══════════════╝
+                                         │
+                            Drop modalities with weight < 5%
+                            Renormalize remaining weights
+                                         │
+                                         ▼
+              ╔══════════════════════════════════════════════════════╗
+              ║  PHASE 2: OpenSearch Hybrid Query                   ║
+              ╚═══════════════════════╤══════════════════════════════╝
+                                      │
+                                      ▼
+                           ┌─────────────────────┐
+                           │    OpenSearch        │
+                           │    Domain            │
+                           │                     │
+                           │  Index: segments-{id}│
+                           │                     │
+                           │  hybrid query:      │
+                           │  ┌─────────────────┐│
+                           │  │ BM25 multi_match ││
+                           │  │ people^3,        ││
+                           │  │ caption^2, title ││
+                           │  │ weight: 0.3      ││
+                           │  ├─────────────────┤│
+                           │  │ kNN visual_vector││
+                           │  │ weight: 0.4      ││
+                           │  ├─────────────────┤│
+                           │  │ kNN audio_vector ││
+                           │  │ (dropped < 5%)   ││
+                           │  ├─────────────────┤│
+                           │  │ kNN transcr_vec  ││
+                           │  │ weight: 0.2      ││
+                           │  └────────┬────────┘│
+                           │           │         │
+                           │  search_pipeline:   │
+                           │  1. min_max norm    │
+                           │  2. weighted arith. │
+                           │     mean fusion     │
+                           │           │         │
+                           │  (kNN resolved via  │
+                           │   S3 Vectors engine)│
+                           └───────────┬─────────┘
+                                       │
+                                       │ scored + ranked hits
+                                       ▼
+              ╔══════════════════════════════════════════════════════╗
+              ║  PHASE 3: Enrich Results                           ║
+              ╚═══════════════════════╤══════════════════════════════╝
+                                      │
+                           ┌──────────▼──────────┐
+                           │    DynamoDB         │
+                           │    videos table     │
+                           │    (lookup filename │
+                           │     per video_id)   │
+                           └──────────┬──────────┘
+                                      │
+                                      ▼
+              ╔══════════════════════════════════════════════════════╗
+              ║  PHASE 4: Entity Re-rank (optional)                ║
+              ║  Only when @entity + text query combined           ║
+              ╚═══════════════════════╤══════════════════════════════╝
+                                      │
+                           ┌──────────▼──────────┐
+                           │    S3 Vectors       │
+                           │    get_vectors()    │
+                           │    (fetch visual    │
+                           │     vec per result) │
+                           └──────────┬──────────┘
+                                      │
+                           cosine_sim(entity_emb, result_visual_vec)
+                           blended = 0.5 * search_score + 0.5 * sim
+                           re-sort by blended score
+                                      │
+                                      ▼
+                           ┌─────────────────────┐
+                           │  Return to frontend  │
+                           │  {results, weights,  │
+                           │   reasoning, timings} │
+                           └─────────────────────┘
+```
+
+**Service interactions during search:**
+
+| Service | Role |
+|---|---|
+| **DynamoDB** | Project config lookup, video filename enrichment, entity name-to-ID resolution |
+| **Bedrock (Haiku)** | LLM weight analysis — decides how much each modality matters for this query |
+| **Bedrock (Nova MME)** | Converts query text into 3 embedding vectors (visual/audio/transcription purpose) |
+| **OpenSearch** | Executes hybrid BM25 + kNN query with inline score fusion pipeline |
+| **S3 Vectors** | Backing store for kNN vectors (queried transparently by OpenSearch + directly for entity lookups and re-ranking) |
 
 ## How It Works
 
@@ -226,7 +470,7 @@ def _index_settings(dimension=1024, vector_engine='s3_vectors'):
     }
 ```
 
-The merge Lambda retrieves vectors from S3 Vectors and assembles the final document:
+Vectors are stored in S3 Vectors during the parallel processing phase (by the Embeddings and Transcription Lambdas). The Merge Lambda then reads them back and assembles the final OpenSearch document:
 
 ```python
 # merge_function.py — building the OpenSearch document
@@ -432,32 +676,60 @@ The vector engine is set at project creation and cannot be changed after (the Op
 
 - AWS account with [Amazon Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) enabled for Nova MME, Nova Lite, and Nova Micro
 - [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) configured with a named profile
-- [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.5
+- [Node.js](https://nodejs.org/) ≥ 18 (for AWS CDK CLI)
+- [AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html) v2 (`npm install -g aws-cdk`)
 - [Docker](https://docs.docker.com/get-docker/) (for building the pipeline Lambda container)
 - Python 3.11+
 
 ## Deployment
 
-One-command deployment creates all infrastructure, builds and pushes the Docker image, packages Lambda functions, deploys the frontend, and creates a test user:
+Infrastructure is managed with AWS CDK (Python). From the `cdk/` directory:
 
 ```bash
-cd deployment
-./deploy.sh <aws-profile> <region> <email>
+cd cdk
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-# Example:
-./deploy.sh my-profile us-east-1 user@example.com
+# Preview changes
+cdk diff
+
+# Deploy everything
+cdk deploy
 ```
 
-The script outputs the app URL, API endpoint, and video CDN URL on completion.
+CDK deploys all infrastructure (OpenSearch, Step Functions, Lambda functions, API Gateway, CloudFront, Cognito, DynamoDB, SQS), builds the Docker image for the pipeline Lambda, packages API Lambda functions, and deploys the static frontend.
+
+**After first deploy**, create an S3 Vectors bucket manually (not yet supported by CloudFormation):
+
+```python
+import boto3
+s3vectors = boto3.client('s3vectors', region_name='us-east-1')
+s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUNT_ID>')
+```
+
+**Create a test user** in the Cognito User Pool:
+
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id <POOL_ID> \
+  --username user@example.com \
+  --temporary-password 'TempPass@123' \
+  --user-attributes Name=email,Value=user@example.com Name=email_verified,Value=true \
+  --region us-east-1
+```
+
+The CDK outputs include the CloudFront URL, API endpoint, and video CDN domain.
 
 ## Cleanup
 
 ```bash
-cd deployment
-./teardown.sh <aws-profile> <region>
+cd cdk
+source .venv/bin/activate
+cdk destroy
 ```
 
-> **Note:** The OpenSearch domain (OR1 instance with S3 Vectors engine) can take 20–30 minutes to fully delete.
+> **Note:** The OpenSearch domain (OR1 instance with S3 Vectors engine) can take 20–30 minutes to fully delete. The S3 Vectors bucket must be deleted manually via the AWS CLI or console.
 
 ## Benchmarks
 
@@ -494,9 +766,11 @@ Test videos:
 │   ├── vector_store.py                # S3 Vectors operations
 │   ├── prompt_analyzer.py             # LLM query weight analysis
 │   └── dynamodb_store.py              # DynamoDB operations
-├── terraform/                   # Infrastructure as code
+├── cdk/                         # AWS CDK infrastructure (Python)
+│   ├── stacks/                        # Main stack definition
+│   └── components/                    # Modular constructs (storage, compute, search, etc.)
 ├── frontend-static/             # Vanilla JS SPA (no build step)
-├── deployment/                  # One-command deploy/teardown scripts
+├── deployment/                  # Dockerfile for pipeline Lambda container
 └── notebooks/                   # Benchmark notebooks
 ```
 

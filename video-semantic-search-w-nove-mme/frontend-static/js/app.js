@@ -1,4 +1,13 @@
 // ============================================
+// HTML Escape Utility
+// ============================================
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ============================================
 // Authentication & Initialization
 // ============================================
 
@@ -69,8 +78,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     btn.textContent = 'Sign In';
 });
 
-document.getElementById('logoutBtn')?.addEventListener('click', () => { auth.signOut(); showLoginScreen(); });
-document.getElementById('projectLogoutBtn')?.addEventListener('click', () => { auth.signOut(); showLoginScreen(); });
+document.getElementById('logoutBtn')?.addEventListener('click', () => { auth.logout(); showLoginScreen(); });
+document.getElementById('projectLogoutBtn')?.addEventListener('click', () => { auth.logout(); showLoginScreen(); });
 document.getElementById('backToProjects')?.addEventListener('click', () => { stopPolling(); showProjectScreen(); });
 
 // ============================================
@@ -84,12 +93,12 @@ async function loadProjects() {
     if (!data) return;
 
     grid.innerHTML = (data.projects || []).map(p => `
-        <div class="project-card" onclick="selectProject('${p.project_id}')">
-            <button class="delete-project-btn" onclick="event.stopPropagation(); deleteProject('${p.project_id}', '${p.name.replace(/'/g, "\\'")}')">\u{1F5D1}</button>
-            <h3>${p.name}</h3>
+        <div class="project-card" onclick="selectProject('${escapeHtml(p.project_id)}')">
+            <button class="delete-project-btn" onclick="event.stopPropagation(); deleteProject('${escapeHtml(p.project_id)}', '${escapeHtml(p.name.replace(/'/g, "\\'"))}')">\u{1F5D1}</button>
+            <h3>${escapeHtml(p.name)}</h3>
             <div class="project-badges">
                 <span class="project-badge" style="background:#e3f2fd;color:#1565c0;">Nova MME</span>
-                <span class="project-badge" style="background:#f3e8ff;color:#7c3aed;">${(getAnalyzerModels(p).find(m => m.id === p.analyzer_model_id) || DEFAULT_ANALYZER).name}</span>
+                <span class="project-badge" style="background:#f3e8ff;color:#7c3aed;">${escapeHtml((getAnalyzerModels(p).find(m => m.id === p.analyzer_model_id) || DEFAULT_ANALYZER).name)}</span>
                 <span class="project-badge" style="background:${p.vector_engine === 'opensearch' ? '#fef3c7;color:#92400e' : '#dcfce7;color:#166534'}">${p.vector_engine === 'opensearch' ? 'OpenSearch kNN' : 'S3 Vectors'}</span>
             </div>
             <div class="project-meta">${p.video_count || 0} videos \u00B7 Created ${new Date(p.created_at).toLocaleDateString()}</div>
@@ -189,7 +198,7 @@ function getAnalyzerModels(project) {
 function buildModelOptions(project) {
     const models = getAnalyzerModels(project);
     const active = project?.analyzer_model_id || DEFAULT_ANALYZER.id;
-    return models.map(m => `<option value="${m.id}" ${m.id === active ? 'selected' : ''}>${m.name}</option>`).join('');
+    return models.map(m => `<option value="${escapeHtml(m.id)}" ${m.id === active ? 'selected' : ''}>${escapeHtml(m.name)}</option>`).join('');
 }
 
 function getAnalyzerModelsFromSelect(selectId) {
@@ -241,7 +250,7 @@ function showProjectSettings() {
             <h2>Project Settings</h2>
             <div class="settings-form">
                 <label>Project Name</label>
-                <input type="text" id="editProjectName" value="${p.name || ''}">
+                <input type="text" id="editProjectName" value="${escapeHtml(p.name || '')}">
 
                 <label>Analyzer Model</label>
                 <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
@@ -284,7 +293,7 @@ async function deleteProjectFromSettings() {
     modal.className = 'modal';
     modal.innerHTML = `
         <div class="modal-content" style="max-width:400px;text-align:center;padding:40px 32px;">
-            <h2 style="font-size:1.2rem;margin-bottom:6px;font-weight:700;">Delete "${name}"?</h2>
+            <h2 style="font-size:1.2rem;margin-bottom:6px;font-weight:700;">Delete "${escapeHtml(name)}"?</h2>
             <p style="color:#888;font-size:0.85rem;margin-bottom:20px;">This action is permanent and cannot be undone.</p>
             <div style="display:flex;gap:10px;">
                 <button onclick="this.closest('.modal').remove()" style="flex:1;padding:11px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.9rem;font-weight:600;">Cancel</button>
@@ -302,7 +311,7 @@ async function executeProjectDeletion() {
         await apiCall(`/projects/${activeProject.project_id}`, { method: 'DELETE' });
         setTimeout(() => { modal.remove(); showProjectScreen(); loadProjects(); }, 500);
     } catch (e) {
-        modal.querySelector('.modal-content').innerHTML = `<div style="text-align:center;padding:40px;"><p>Error: ${e.message}</p><button onclick="this.closest('.modal').remove()" style="margin-top:16px;padding:8px 24px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;">Close</button></div>`;
+        modal.querySelector('.modal-content').innerHTML = `<div style="text-align:center;padding:40px;"><p>Error: ${escapeHtml(e.message)}</p><button onclick="this.closest('.modal').remove()" style="margin-top:16px;padding:8px 24px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;">Close</button></div>`;
     }
 }
 
@@ -336,7 +345,7 @@ async function apiCall(endpoint, options = {}) {
         if (!response.ok) throw new Error(`API error: ${response.statusText}`);
         return await response.json();
     } catch (error) {
-        console.error('API call failed:', error);
+        console.error('API call failed:', error.message);
         throw error;
     }
 }
@@ -378,17 +387,26 @@ const videoInput = document.getElementById('videoInput');
 const uploadToast = document.getElementById('uploadToast');
 const uploadStatus = document.getElementById('uploadStatus');
 
+let fabClickHandler = null;
+
 function updateFAB(tab) {
+    if (fabClickHandler) {
+        floatingActionBtn.removeEventListener('click', fabClickHandler);
+        fabClickHandler = null;
+    }
+
     if (tab === 'upload') {
         floatingActionBtn.style.display = 'flex';
         floatingActionBtn.title = 'Upload Video';
         floatingActionBtn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
-        floatingActionBtn.onclick = () => videoInput.click();
+        fabClickHandler = () => videoInput.click();
+        floatingActionBtn.addEventListener('click', fabClickHandler);
     } else if (tab === 'entityCatalog') {
         floatingActionBtn.style.display = 'flex';
         floatingActionBtn.title = 'Add Entity';
         floatingActionBtn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
-        floatingActionBtn.onclick = () => showCreateEntityModal();
+        fabClickHandler = () => showCreateEntityModal();
+        floatingActionBtn.addEventListener('click', fabClickHandler);
     } else {
         floatingActionBtn.style.display = 'none';
     }
@@ -444,13 +462,13 @@ async function loadJobs() {
         else if (!hasActive && pollInterval) stopPolling();
 
         jobsList.innerHTML = data.videos.map((video, i) => `
-            <div class="job-card fade-in-item" style="animation-delay:${i * 0.04}s" onclick="loadJobDetails('${video.video_id}')">
+            <div class="job-card fade-in-item" style="animation-delay:${i * 0.04}s" onclick="loadJobDetails('${escapeHtml(video.video_id)}')">
                 <div class="job-header">
-                    <h4>${video.filename || video.video_id}</h4>
-                    <span class="job-status status-${video.status}">${video.status}</span>
+                    <h4>${escapeHtml(video.filename || video.video_id)}</h4>
+                    <span class="job-status status-${escapeHtml(video.status)}">${escapeHtml(video.status)}</span>
                 </div>
                 <div class="job-info">
-                    <div>Video ID: ${video.video_id.substring(0, 8)}...</div>
+                    <div>Video ID: ${escapeHtml(video.video_id.substring(0, 8))}...</div>
                     <div>Updated: ${new Date(video.updated_at || video.created_at).toLocaleString()}</div>
                 </div>
             </div>
@@ -480,13 +498,13 @@ async function loadJobDetails(videoId) {
         modal.innerHTML = `
             <div class="modal-content modal-large">
                 <span class="modal-close" onclick="this.parentElement.parentElement.remove()">&times;</span>
-                <h2>${data.filename || data.video_id}</h2>
+                <h2>${escapeHtml(data.filename || data.video_id)}</h2>
                 <div class="job-details">
-                    <p><strong>Video ID:</strong> ${data.video_id}</p>
-                    <p><strong>Status:</strong> ${data.status}</p>
+                    <p><strong>Video ID:</strong> ${escapeHtml(data.video_id)}</p>
+                    <p><strong>Status:</strong> ${escapeHtml(data.status)}</p>
                     <p><strong>Created:</strong> ${new Date(data.created_at).toLocaleString()}</p>
                     ${data.segment_count ? `<p><strong>Segments:</strong> ${data.segment_count}</p>` : ''}
-                    ${data.genre ? `<p><strong>Genre:</strong> ${data.genre}</p>` : ''}
+                    ${data.genre ? `<p><strong>Genre:</strong> ${escapeHtml(data.genre)}</p>` : ''}
                     ${durationHtml}
                 </div>
             </div>
@@ -563,8 +581,8 @@ function displayWeights(weights, reasoning, timings, analyzerModelId) {
         <details>
         <summary style="cursor:pointer;font-weight:600;font-size:0.95rem;padding:8px 0;">Search Strategy \u25B8</summary>
         <div style="margin-top:8px;">
-        <p style="margin:0 0 6px;font-size:0.85rem;color:#888;">Analyzer: <strong>${modelLabel}</strong></p>
-        <p>${reasoning}</p>
+        <p style="margin:0 0 6px;font-size:0.85rem;color:#888;">Analyzer: <strong>${escapeHtml(modelLabel)}</strong></p>
+        <p>${escapeHtml(reasoning)}</p>
         ${timingInfo}
         <div class="weight-bars">
             <div class="weight-bar"><div class="weight-bar-label"><span>Metadata (BM25)</span><span>${((weights.metadata||0)*100).toFixed(0)}%</span></div><div class="weight-bar-fill"><div class="weight-bar-value" style="width:${(weights.metadata||0)*100}%;background:#f59e0b;"></div></div></div>
@@ -586,22 +604,22 @@ function displayResultsPage(container) {
         card.className = 'result-card fade-in-item';
         card.style.animationDelay = `${i * 0.05}s`;
         const people = (result.people || []).filter(p => p);
-        const peopleLine = people.length ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${people.map(p => `<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:500;">\u{1F464} ${p}</span>`).join('')}</div>` : '';
+        const peopleLine = people.length ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${people.map(p => `<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:500;">\u{1F464} ${escapeHtml(p)}</span>`).join('')}</div>` : '';
         card.innerHTML = `
-            <video controls data-end="${result.end_sec}">
-                <source src="${CONFIG.VIDEO_CDN}/uploads/${videoFile}#t=${result.start_sec},${result.end_sec}" type="video/mp4">
+            <video controls data-end="${parseFloat(result.end_sec) || 0}">
+                <source src="${CONFIG.VIDEO_CDN}/uploads/${encodeURIComponent(videoFile)}#t=${parseFloat(result.start_sec) || 0},${parseFloat(result.end_sec) || 0}" type="video/mp4">
             </video>
             <div class="result-info" style="padding:10px 12px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <span style="font-weight:600;font-size:0.85rem;color:#111;">${formatTime(result.start_sec)} \u2013 ${formatTime(result.end_sec)}</span>
                     <span style="font-size:0.75rem;color:#888;font-weight:500;">Score ${(result.combined_score||0).toFixed(3)}</span>
                 </div>
-                ${result.caption ? `<div style="font-size:0.82rem;color:#444;line-height:1.45;margin-bottom:8px;">${result.caption}</div>` : ''}
-                ${result.genre ? `<div><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:500;">\u{1F3F7}\uFE0F ${result.genre}</span></div>` : ''}
+                ${result.caption ? `<div style="font-size:0.82rem;color:#444;line-height:1.45;margin-bottom:8px;">${escapeHtml(result.caption)}</div>` : ''}
+                ${result.genre ? `<div><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:500;">\u{1F3F7}\uFE0F ${escapeHtml(result.genre)}</span></div>` : ''}
                 ${peopleLine}
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:6px;border-top:1px solid #f0f0f0;">
-                    <span style="font-size:0.75rem;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;" title="${result.filename}">${result.filename}</span>
-                    ${result.upload_date ? `<span style="font-size:0.72rem;color:#aaa;">${result.upload_date}</span>` : ''}
+                    <span style="font-size:0.75rem;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;" title="${escapeHtml(result.filename)}">${escapeHtml(result.filename)}</span>
+                    ${result.upload_date ? `<span style="font-size:0.72rem;color:#aaa;">${escapeHtml(result.upload_date)}</span>` : ''}
                 </div>
             </div>
         `;
@@ -652,12 +670,12 @@ async function loadGallery() {
         galleryGrid.innerHTML = data.videos.map(video => `
             <div class="result-card">
                 <video controls>
-                    <source src="${CONFIG.VIDEO_CDN}/uploads/${video.video_id}_${video.filename}" type="video/mp4">
+                    <source src="${CONFIG.VIDEO_CDN}/uploads/${encodeURIComponent(video.video_id + '_' + video.filename)}" type="video/mp4">
                 </video>
                 <div class="result-info">
-                    <div class="result-filename">${video.filename}</div>
+                    <div class="result-filename">${escapeHtml(video.filename)}</div>
                     <div class="result-time">${video.segment_count || 0} segments</div>
-                    <div class="result-confidence">Status: ${video.status}</div>
+                    <div class="result-confidence">Status: ${escapeHtml(video.status)}</div>
                 </div>
             </div>
         `).join('');
@@ -689,20 +707,20 @@ async function loadEntities() {
     if (!entities.length) { grid.innerHTML = ''; return; }
     grid.innerHTML = entities.map(e => {
         const imgSrc = e.image_key ? CONFIG.VIDEO_CDN + '/' + e.image_key : '';
-        return `<div class="entity-card" style="border:1px solid #e5e5e5;border-radius:10px;position:relative;cursor:pointer;" data-entity-id="${e.entity_id}">
+        return `<div class="entity-card" style="border:1px solid #e5e5e5;border-radius:10px;position:relative;cursor:pointer;" data-entity-id="${escapeHtml(e.entity_id)}">
             <div style="padding:20px 16px 8px;display:flex;justify-content:center;">
                 <div style="width:100px;height:100px;border-radius:50%;overflow:hidden;background:#f5f5f5;flex-shrink:0;">
-                    ${imgSrc ? `<img src="${imgSrc}" alt="${e.name}" style="width:100%;height:100%;object-fit:cover;">` :
+                    ${imgSrc ? `<img src="${escapeHtml(imgSrc)}" alt="${escapeHtml(e.name)}" style="width:100%;height:100%;object-fit:cover;">` :
                     `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>`}
                 </div>
             </div>
             <div style="padding:8px 12px 12px;text-align:center;">
-                <h4 style="font-size:0.9rem;margin-bottom:2px;font-weight:600;">${e.name}</h4>
-                <p style="font-size:0.8rem;color:#888;margin-bottom:4px;">@${e.name.toLowerCase().replace(/ /g, '_')}</p>
+                <h4 style="font-size:0.9rem;margin-bottom:2px;font-weight:600;">${escapeHtml(e.name)}</h4>
+                <p style="font-size:0.8rem;color:#888;margin-bottom:4px;">@${escapeHtml(e.name.toLowerCase().replace(/ /g, '_'))}</p>
                 <span style="font-size:0.7rem;padding:2px 8px;border-radius:4px;background:${e.has_embedding ? '#dcfce7;color:#166534' : '#fef3c7;color:#92400e'};">${e.has_embedding ? '✓ Embedded' : 'No image'}</span>
                 <div style="margin-top:10px;display:flex;gap:6px;">
-                    <button onclick="editEntity('${e.entity_id}','${e.name.replace(/'/g, "\\'")}')" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:0.75rem;">Rename</button>
-                    <button onclick="deleteEntity('${e.entity_id}','${e.name.replace(/'/g, "\\'")}')" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:0.75rem;color:#c00;">Delete</button>
+                    <button onclick="editEntity('${escapeHtml(e.entity_id)}','${escapeHtml(e.name.replace(/'/g, "\\'"))}')" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:0.75rem;">Rename</button>
+                    <button onclick="deleteEntity('${escapeHtml(e.entity_id)}','${escapeHtml(e.name.replace(/'/g, "\\'"))}')" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:0.75rem;color:#c00;">Delete</button>
                 </div>
             </div>
         </div>`;
@@ -762,20 +780,28 @@ function showCreateEntityModal() {
         btn.disabled = true;
         btn.textContent = 'Creating...';
 
-        // Step 1: Create entity and get presigned upload URL
-        const data = await apiCall('/entities', { method: 'POST', body: JSON.stringify({ name, project_id: activeProject?.project_id || '' }) });
-        if (!data?.entity_id) { btn.disabled = false; btn.textContent = 'Create Entity'; return; }
+        try {
+            // Step 1: Create entity and get presigned upload URL
+            const data = await apiCall('/entities', { method: 'POST', body: JSON.stringify({ name, project_id: activeProject?.project_id || '' }) });
+            if (!data?.entity_id) { btn.disabled = false; btn.textContent = 'Create Entity'; return; }
 
-        // Step 2: Upload image to S3
-        btn.textContent = 'Uploading image...';
-        await fetch(data.upload_url, { method: 'PUT', body: file, headers: { 'Content-Type': 'image/jpeg' } });
+            // Step 2: Upload image to S3
+            btn.textContent = 'Uploading image...';
+            const uploadResp = await fetch(data.upload_url, { method: 'PUT', body: file, headers: { 'Content-Type': 'image/jpeg' } });
+            if (!uploadResp.ok) throw new Error('Image upload failed');
 
-        // Step 3: Generate embedding
-        btn.textContent = 'Generating embedding...';
-        await apiCall(`/entities/${data.entity_id}`, { method: 'PUT', body: JSON.stringify({ generate_embedding: true }) });
+            // Step 3: Generate embedding
+            btn.textContent = 'Generating embedding...';
+            await apiCall(`/entities/${data.entity_id}`, { method: 'PUT', body: JSON.stringify({ generate_embedding: true }) });
 
-        d.remove();
-        loadEntities();
+            d.remove();
+            loadEntities();
+        } catch (e) {
+            console.error('Entity creation failed:', e);
+            alert(`Entity creation failed: ${e.message}`);
+            btn.disabled = false;
+            btn.textContent = 'Create Entity';
+        }
     };
     d.addEventListener('click', (e) => { if (e.target === d) d.remove(); });
 }
