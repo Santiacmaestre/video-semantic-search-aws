@@ -765,13 +765,45 @@ The CDK outputs include the CloudFront URL, API endpoint, Cognito User Pool ID, 
 
 ## Cleanup
 
+**1. Delete the S3 Vectors bucket** (not managed by CloudFormation):
+
+```python
+import boto3
+client = boto3.client('s3vectors', region_name='us-east-1')
+bucket = 'video-search-v2-vectors-<ACCOUNT_ID>'
+for idx in client.list_indexes(vectorBucketName=bucket).get('indexes', []):
+    client.delete_index(vectorBucketName=bucket, indexName=idx['indexName'])
+client.delete_vector_bucket(vectorBucketName=bucket)
+```
+
+**2. Destroy the CDK stack:**
+
 ```bash
 cd cdk
 source .venv/bin/activate
 cdk destroy
 ```
 
-> **Note:** The OpenSearch domain (OR1 instance with S3 Vectors engine) can take 20–30 minutes to fully delete. The S3 Vectors bucket must be deleted manually via the AWS CLI or console.
+The access logs bucket will likely fail deletion because it contains log objects. If `cdk destroy` fails, empty the bucket and retry:
+
+```bash
+# Get the bucket name from the error message, then:
+aws s3 rm s3://<ACCESS_LOGS_BUCKET> --recursive --region us-east-1
+aws cloudformation delete-stack --stack-name video-search-v2-stack --region us-east-1
+aws cloudformation wait stack-delete-complete --stack-name video-search-v2-stack --region us-east-1
+```
+
+**3. Delete retained resources** — CDK retains the OpenSearch domain and Cognito user pool to prevent accidental data loss. Delete them manually after stack destruction:
+
+```bash
+# Delete OpenSearch domain (can take 20-30 minutes)
+aws opensearch delete-domain --domain-name <DOMAIN_NAME> --region us-east-1
+
+# Delete Cognito user pool
+aws cognito-idp delete-user-pool --user-pool-id <POOL_ID> --region us-east-1
+```
+
+> **Tip:** Find the OpenSearch domain name with `aws opensearch list-domain-names --region us-east-1` and the Cognito pool ID with `aws cognito-idp list-user-pools --max-results 10 --region us-east-1`.
 
 ## Benchmarks
 
