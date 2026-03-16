@@ -215,6 +215,7 @@ class ProcessingConstruct(Construct):
             self, "VideoProcessing",
 
             definition_body=sfn.DefinitionBody.from_chainable(definition),
+            tracing_enabled=True,
             logs=sfn.LogOptions(
                 destination=log_group,
                 level=sfn.LogLevel.ERROR,
