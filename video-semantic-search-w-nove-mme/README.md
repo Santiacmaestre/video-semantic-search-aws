@@ -7,6 +7,9 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 ## Table of Contents
 
 - [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Deployment](#deployment)
+- [Cleanup](#cleanup)
 - [How It Works](#how-it-works)
   - [1. Scene-Aware Segmentation](#1-scene-aware-segmentation)
   - [2. Multi-Modal Embedding with Nova MME](#2-multi-modal-embedding-with-nova-mme)
@@ -15,9 +18,6 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
   - [5. LLM-Weighted Hybrid Search](#5-llm-weighted-hybrid-search)
   - [6. Entity Catalog and Visual Search](#6-entity-catalog-and-visual-search)
   - [7. Vector Engine Selection](#7-vector-engine-selection)
-- [Prerequisites](#prerequisites)
-- [Deployment](#deployment)
-- [Cleanup](#cleanup)
 - [Benchmarks](#benchmarks)
 - [Project Structure](#project-structure)
 - [AWS Services Used](#aws-services-used)
@@ -28,33 +28,102 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 
 ![Architecture](image.png)
 
-### High-Level Overview
 
+## Prerequisites
+
+- AWS account with [Amazon Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) enabled for Nova MME, Nova Lite, and Claude Haiku 4.5
+- [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) configured with a named profile
+- [Node.js](https://nodejs.org/) ≥ 18 (for AWS CDK CLI)
+- [AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html) v2 (`npm install -g aws-cdk`)
+- [Docker](https://docs.docker.com/get-docker/) (for building the pipeline Lambda container)
+- Python 3.13+ (Lambda runtime; CDK works with 3.11+)
+
+## Deployment
+
+Infrastructure is managed with AWS CDK (Python). From the `cdk/` directory:
+
+```bash
+cd cdk
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Preview changes
+cdk diff
+
+# Deploy everything
+cdk deploy
 ```
-┌──────────┐     ┌────────────┐     ┌─────────────┐     ┌──────────────────┐
-│  Browser  │────▶│ CloudFront │────▶│  S3 Static  │     │   Cognito Auth   │
-└──────────┘     └────────────┘     └─────────────┘     └──────────────────┘
-                       │
-                 API Gateway (REST + JWT)
-                       │
-                 Lambda Functions (API)
-                       │
-              ┌────────┴────────┐
-              ▼                 ▼
-          DynamoDB          OpenSearch ◄──── S3 Vectors
-       (metadata)        (hybrid search)    (kNN backing store)
+
+CDK deploys all infrastructure (OpenSearch, Step Functions, Lambda functions, API Gateway, CloudFront, Cognito, DynamoDB, SQS), builds the Docker image for the pipeline Lambda, packages API Lambda functions, and deploys the static frontend.
+
+**After first deploy**, create an S3 Vectors bucket manually (not yet supported by CloudFormation):
+
+```python
+import boto3
+s3vectors = boto3.client('s3vectors', region_name='us-east-1')
+s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUNT_ID>')
 ```
 
+### User Management
 
-**Service interactions during search:**
+**Create a user** in the Cognito User Pool:
 
-| Service | Role |
-|---|---|
-| **DynamoDB** | Project config lookup, video filename enrichment, entity name-to-ID resolution |
-| **Bedrock (Haiku)** | LLM weight analysis — decides how much each modality matters for this query |
-| **Bedrock (Nova MME)** | Converts query text into 3 embedding vectors (visual/audio/transcription purpose) |
-| **OpenSearch** | Executes hybrid BM25 + kNN query with inline score fusion pipeline |
-| **S3 Vectors** | Backing store for kNN vectors (queried transparently by OpenSearch + directly for entity lookups and re-ranking) |
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id <POOL_ID> \
+  --username user@example.com \
+  --temporary-password 'TempPass@123' \
+  --user-attributes Name=email,Value=user@example.com Name=email_verified,Value=true \
+  --message-action SUPPRESS \
+  --region us-east-1
+```
+
+On first login, the user will be prompted to set a new permanent password (the temporary password is single-use). Password requirements: minimum 8 characters, with uppercase, lowercase, numbers, and symbols.
+
+## Cleanup
+
+**1. Delete the S3 Vectors bucket** (not managed by CloudFormation):
+
+```python
+import boto3
+client = boto3.client('s3vectors', region_name='us-east-1')
+bucket = 'video-search-v2-vectors-<ACCOUNT_ID>'
+for idx in client.list_indexes(vectorBucketName=bucket).get('indexes', []):
+    client.delete_index(vectorBucketName=bucket, indexName=idx['indexName'])
+client.delete_vector_bucket(vectorBucketName=bucket)
+```
+
+**2. Destroy the CDK stack:**
+
+```bash
+cd cdk
+source .venv/bin/activate
+cdk destroy
+```
+
+The access logs bucket will likely fail deletion because it contains log objects. If `cdk destroy` fails, empty the bucket and retry:
+
+```bash
+# Get the bucket name from the error message, then:
+aws s3 rm s3://<ACCESS_LOGS_BUCKET> --recursive --region us-east-1
+aws cloudformation delete-stack --stack-name video-search-v2-stack --region us-east-1
+aws cloudformation wait stack-delete-complete --stack-name video-search-v2-stack --region us-east-1
+```
+
+**3. Delete retained resources** — CDK retains the OpenSearch domain and Cognito user pool to prevent accidental data loss. Delete them manually after stack destruction:
+
+```bash
+# Delete OpenSearch domain (can take 20-30 minutes)
+aws opensearch delete-domain --domain-name <DOMAIN_NAME> --region us-east-1
+
+# Delete Cognito user pool
+aws cognito-idp delete-user-pool --user-pool-id <POOL_ID> --region us-east-1
+```
+
+> **Tip:** Find the OpenSearch domain name with `aws opensearch list-domain-names --region us-east-1` and the Cognito pool ID with `aws cognito-idp list-user-pools --max-results 10 --region us-east-1`.
+
+
 
 ## How It Works
 
@@ -424,139 +493,6 @@ def _index_settings(dimension=1024, vector_engine='s3_vectors'):
 With S3 Vectors, OpenSearch delegates vector storage and kNN computation to S3. With nmslib, OpenSearch builds an in-memory HNSW graph for approximate nearest neighbor search — trading cluster resources for lower query latency.
 
 The vector engine is set at project creation and cannot be changed after (the OpenSearch index mapping is immutable). Entity embeddings always use S3 Vectors regardless of the project's engine choice.
-
-## Prerequisites
-
-- AWS account with [Amazon Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) enabled for Nova MME, Nova Lite, and Claude Haiku 4.5
-- [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) configured with a named profile
-- [Node.js](https://nodejs.org/) ≥ 18 (for AWS CDK CLI)
-- [AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html) v2 (`npm install -g aws-cdk`)
-- [Docker](https://docs.docker.com/get-docker/) (for building the pipeline Lambda container)
-- Python 3.13+ (Lambda runtime; CDK works with 3.11+)
-
-## Deployment
-
-Infrastructure is managed with AWS CDK (Python). From the `cdk/` directory:
-
-```bash
-cd cdk
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Preview changes
-cdk diff
-
-# Deploy everything
-cdk deploy
-```
-
-CDK deploys all infrastructure (OpenSearch, Step Functions, Lambda functions, API Gateway, CloudFront, Cognito, DynamoDB, SQS), builds the Docker image for the pipeline Lambda, packages API Lambda functions, and deploys the static frontend.
-
-**After first deploy**, create an S3 Vectors bucket manually (not yet supported by CloudFormation):
-
-```python
-import boto3
-s3vectors = boto3.client('s3vectors', region_name='us-east-1')
-s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUNT_ID>')
-```
-
-### User Management
-
-**Create a user** in the Cognito User Pool:
-
-```bash
-aws cognito-idp admin-create-user \
-  --user-pool-id <POOL_ID> \
-  --username user@example.com \
-  --temporary-password 'TempPass@123' \
-  --user-attributes Name=email,Value=user@example.com Name=email_verified,Value=true \
-  --message-action SUPPRESS \
-  --region us-east-1
-```
-
-On first login, the user will be prompted to set a new permanent password (the temporary password is single-use). Password requirements: minimum 8 characters, with uppercase, lowercase, numbers, and symbols.
-
-**Reset a user's password** (forces a new password change on next login):
-
-```bash
-aws cognito-idp admin-reset-user-password \
-  --user-pool-id <POOL_ID> \
-  --username user@example.com \
-  --region us-east-1
-```
-
-**Set a permanent password directly** (skips the change-password prompt):
-
-```bash
-aws cognito-idp admin-set-user-password \
-  --user-pool-id <POOL_ID> \
-  --username user@example.com \
-  --password 'NewPass@123' \
-  --permanent \
-  --region us-east-1
-```
-
-**Delete a user:**
-
-```bash
-aws cognito-idp admin-delete-user \
-  --user-pool-id <POOL_ID> \
-  --username user@example.com \
-  --region us-east-1
-```
-
-**List all users:**
-
-```bash
-aws cognito-idp list-users \
-  --user-pool-id <POOL_ID> \
-  --region us-east-1
-```
-
-The CDK outputs include the CloudFront URL, API endpoint, Cognito User Pool ID, and video CDN domain.
-
-## Cleanup
-
-**1. Delete the S3 Vectors bucket** (not managed by CloudFormation):
-
-```python
-import boto3
-client = boto3.client('s3vectors', region_name='us-east-1')
-bucket = 'video-search-v2-vectors-<ACCOUNT_ID>'
-for idx in client.list_indexes(vectorBucketName=bucket).get('indexes', []):
-    client.delete_index(vectorBucketName=bucket, indexName=idx['indexName'])
-client.delete_vector_bucket(vectorBucketName=bucket)
-```
-
-**2. Destroy the CDK stack:**
-
-```bash
-cd cdk
-source .venv/bin/activate
-cdk destroy
-```
-
-The access logs bucket will likely fail deletion because it contains log objects. If `cdk destroy` fails, empty the bucket and retry:
-
-```bash
-# Get the bucket name from the error message, then:
-aws s3 rm s3://<ACCESS_LOGS_BUCKET> --recursive --region us-east-1
-aws cloudformation delete-stack --stack-name video-search-v2-stack --region us-east-1
-aws cloudformation wait stack-delete-complete --stack-name video-search-v2-stack --region us-east-1
-```
-
-**3. Delete retained resources** — CDK retains the OpenSearch domain and Cognito user pool to prevent accidental data loss. Delete them manually after stack destruction:
-
-```bash
-# Delete OpenSearch domain (can take 20-30 minutes)
-aws opensearch delete-domain --domain-name <DOMAIN_NAME> --region us-east-1
-
-# Delete Cognito user pool
-aws cognito-idp delete-user-pool --user-pool-id <POOL_ID> --region us-east-1
-```
-
-> **Tip:** Find the OpenSearch domain name with `aws opensearch list-domain-names --region us-east-1` and the Cognito pool ID with `aws cognito-idp list-user-pools --max-results 10 --region us-east-1`.
 
 ## Benchmarks
 
