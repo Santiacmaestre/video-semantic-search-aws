@@ -674,12 +674,12 @@ The vector engine is set at project creation and cannot be changed after (the Op
 
 ## Prerequisites
 
-- AWS account with [Amazon Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) enabled for Nova MME, Nova Lite, and Nova Micro
+- AWS account with [Amazon Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) enabled for Nova MME, Nova Lite, and Claude Haiku 4.5
 - [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) configured with a named profile
 - [Node.js](https://nodejs.org/) ≥ 18 (for AWS CDK CLI)
 - [AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html) v2 (`npm install -g aws-cdk`)
 - [Docker](https://docs.docker.com/get-docker/) (for building the pipeline Lambda container)
-- Python 3.11+
+- Python 3.13+ (Lambda runtime; CDK works with 3.11+)
 
 ## Deployment
 
