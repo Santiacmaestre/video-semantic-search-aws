@@ -101,9 +101,10 @@ def search_with_fusion(query_text: str, top_k: int = None, project_id: str = '',
     k = top_k or 20
     need_vectors = bool(entity_emb and not pure_entity_search and vector_engine == 'opensearch')
     hits = hybrid_search(project_id, clean_query, vectors, weights_list, k, return_vectors=need_vectors)
-    timings['search_ms'] = int((time.time() - t0) * 1000)
+    timings['opensearch_ms'] = int((time.time() - t0) * 1000)
 
-    # --- Phase 3: Format results ---------------------------------------------------
+    # --- Phase 3: Format results + enrich filenames --------------------------------
+    t0 = time.time()
     results = [
         {
             'video_id': h.get('video_id', ''),
@@ -123,6 +124,8 @@ def search_with_fusion(query_text: str, top_k: int = None, project_id: str = '',
 
     if results:
         _enrich_filenames(results)
+    timings['enrich_ms'] = int((time.time() - t0) * 1000)
+    timings['search_ms'] = timings['opensearch_ms'] + timings['enrich_ms']
 
     # --- Phase 4: Entity re-rank (post-sort) --------------------------------------
     # If @entity with embedding in a combined search, fetch visual vectors for each
@@ -131,6 +134,11 @@ def search_with_fusion(query_text: str, top_k: int = None, project_id: str = '',
         t0 = time.time()
         _entity_rerank(results, entity_emb, project_id, vector_engine=vector_engine)
         timings['entity_rerank_ms'] = int((time.time() - t0) * 1000)
+
+    print(f"Search timings: preprocessing={timings['preprocessing_ms']}ms "
+          f"opensearch={timings['opensearch_ms']}ms enrich={timings['enrich_ms']}ms "
+          f"total={timings['preprocessing_ms'] + timings['search_ms']}ms "
+          f"engine={vector_engine}")
 
     return {
         'results': results,
