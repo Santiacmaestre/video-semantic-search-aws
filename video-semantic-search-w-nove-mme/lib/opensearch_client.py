@@ -169,6 +169,7 @@ def hybrid_search(project_id: str, query_text: str, vectors: dict, weights: list
                 'people': src.get('people', []),
                 'genre': src.get('genre'),
                 'upload_date': src.get('upload_date', ''),
+                'title': src.get('title', ''),
                 'score': hit.get('_score', 0)
             }
             if return_vectors and 'visual_vector' in src:
