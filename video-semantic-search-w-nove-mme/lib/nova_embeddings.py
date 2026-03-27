@@ -136,7 +136,18 @@ def generate_image_embedding_nova(s3_uri: str, purpose: str = 'GENERIC_INDEX') -
     obj = s3_client.get_object(Bucket=bucket, Key=key)
     image_bytes = obj['Body'].read()
 
+    # Detect image format from magic bytes
     import base64
+    if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+        img_format = 'png'
+    elif image_bytes[:2] == b'\xff\xd8':
+        img_format = 'jpeg'
+    elif image_bytes[:4] == b'GIF8':
+        img_format = 'gif'
+    elif image_bytes[:4] == b'RIFF' and image_bytes[8:12] == b'WEBP':
+        img_format = 'webp'
+    else:
+        img_format = 'jpeg'
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
     request_body = {
@@ -144,7 +155,7 @@ def generate_image_embedding_nova(s3_uri: str, purpose: str = 'GENERIC_INDEX') -
         'singleEmbeddingParams': {
             'embeddingPurpose': purpose,
             'embeddingDimension': NOVA_DIMENSION,
-            'image': {'format': 'jpeg', 'source': {'bytes': image_b64}}
+            'image': {'format': img_format, 'source': {'bytes': image_b64}}
         }
     }
 

@@ -806,12 +806,12 @@ function showCreateEntityModal() {
 
         try {
             // Step 1: Create entity and get presigned upload URL
-            const data = await apiCall('/entities', { method: 'POST', body: JSON.stringify({ name, project_id: activeProject?.project_id || '' }) });
+            const data = await apiCall('/entities', { method: 'POST', body: JSON.stringify({ name, project_id: activeProject?.project_id || '', content_type: file.type }) });
             if (!data?.entity_id) { btn.disabled = false; btn.textContent = 'Create Entity'; return; }
 
             // Step 2: Upload image to S3
             btn.textContent = 'Uploading image...';
-            const uploadResp = await fetch(data.upload_url, { method: 'PUT', body: file, headers: { 'Content-Type': 'image/jpeg' } });
+            const uploadResp = await fetch(data.upload_url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'image/jpeg' } });
             if (!uploadResp.ok) throw new Error('Image upload failed');
 
             // Step 3: Generate embedding

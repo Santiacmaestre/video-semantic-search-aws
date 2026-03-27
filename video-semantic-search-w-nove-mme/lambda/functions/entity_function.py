@@ -85,12 +85,18 @@ def handle_create(event, table, project_id=''):
     if not name:
         return respond(400, {'error': 'name is required'})
 
+    content_type = body.get('content_type', 'image/jpeg')
+    allowed_types = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp'}
+    if content_type not in allowed_types:
+        return respond(400, {'error': f'Unsupported image type: {content_type}'})
+    ext = allowed_types[content_type]
+
     entity_id = f"entity_{name.lower().replace(' ', '_')}_{int(time.time())}"
-    image_key = f"entities/{project_id}/{entity_id}.jpg"
+    image_key = f"entities/{project_id}/{entity_id}{ext}"
 
     # Generate presigned upload URL for the image
     upload_url = s3.generate_presigned_url('put_object', Params={
-        'Bucket': S3_VIDEO_BUCKET, 'Key': image_key, 'ContentType': 'image/jpeg',
+        'Bucket': S3_VIDEO_BUCKET, 'Key': image_key, 'ContentType': content_type,
     }, ExpiresIn=300)
 
     entity = {
