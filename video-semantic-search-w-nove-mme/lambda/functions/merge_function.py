@@ -26,6 +26,9 @@ DIMENSION = 1024
 
 def lambda_handler(event, context):
     """Merge parallel outputs and index everything to OpenSearch."""
+    if event.get('backfill_titles'):
+        return _backfill_titles(event.get('project_id', ''))
+
     video_id = event['video_id']
     project_id = event.get('project_id', '')
 
@@ -86,16 +89,17 @@ def lambda_handler(event, context):
     )
 
     # Index to OpenSearch
+    filename = dynamodb.Table(VIDEOS_TABLE).get_item(Key={'video_id': video_id}).get('Item', {}).get('filename', '')
     if segments:
         try:
-            _index_to_opensearch(video_id, project_id, segments, captions, transcripts, celebrities, genre, vector_engine)
+            _index_to_opensearch(video_id, project_id, segments, captions, transcripts, celebrities, genre, vector_engine, filename)
         except Exception as e:
             print(f"OpenSearch indexing failed: {e}")
 
     return {'status': 'completed', 'segment_count': len(segments)}
 
 
-def _index_to_opensearch(video_id, project_id, segments, captions, transcripts, celebrities, genre, vector_engine='s3_vectors'):
+def _index_to_opensearch(video_id, project_id, segments, captions, transcripts, celebrities, genre, vector_engine='s3_vectors', filename=''):
     """Build OpenSearch documents with vectors + metadata and bulk-index them."""
     from opensearch_client import bulk_index_segments
     from vector_store import get_indices
@@ -134,6 +138,7 @@ def _index_to_opensearch(video_id, project_id, segments, captions, transcripts, 
 
     # Build documents
     today = datetime.utcnow().strftime('%Y-%m-%d')
+    title = os.path.splitext(filename)[0].replace('_', ' ') if filename else ''
     docs = []
     for seg in segments:
         idx = seg['segment_index']
@@ -141,6 +146,7 @@ def _index_to_opensearch(video_id, project_id, segments, captions, transcripts, 
         doc = {
             'video_id': video_id,
             'segment_id': f"seg_{idx:04d}",
+            'title': title,
             'caption': caption_map.get(idx, ''),
             'people': sorted(celeb_by_seg.get(idx, set())),
             'genre': genre,
@@ -154,3 +160,48 @@ def _index_to_opensearch(video_id, project_id, segments, captions, transcripts, 
         docs.append(doc)
 
     bulk_index_segments(project_id, docs, DIMENSION, vector_engine)
+
+
+def _backfill_titles(project_id):
+    """Backfill title field in OpenSearch from DynamoDB video filenames."""
+    from opensearchpy import OpenSearch
+    from requests_aws4auth import AWS4Auth
+
+    endpoint = os.environ.get('OPENSEARCH_ENDPOINT', '')
+    host = endpoint.replace('https://', '')
+    region = os.environ.get('AWS_REGION', 'us-east-1')
+    creds = boto3.Session().get_credentials()
+    auth = AWS4Auth(creds.access_key, creds.secret_key, region, 'es', session_token=creds.token)
+    client = OpenSearch(hosts=[{'host': host, 'port': 443}], http_auth=auth,
+                        use_ssl=True, verify_certs=True,
+                        connection_class=__import__('opensearchpy').RequestsHttpConnection,
+                        timeout=120)
+
+    index_name = f"segments-{project_id}"
+
+    resp = dynamodb.Table(VIDEOS_TABLE).scan(
+        FilterExpression='project_id = :pid',
+        ExpressionAttributeValues={':pid': project_id},
+        ProjectionExpression='video_id, filename',
+    )
+    title_map = {}
+    for item in resp.get('Items', []):
+        filename = item.get('filename', '')
+        title_map[item['video_id']] = os.path.splitext(filename)[0].replace('_', ' ') if filename else ''
+
+    updated = 0
+    for vid, title in title_map.items():
+        if not title:
+            continue
+        body = {
+            "query": {"term": {"video_id": vid}},
+            "script": {"source": "ctx._source.title = params.title", "params": {"title": title}},
+        }
+        try:
+            r = client.update_by_query(index=index_name, body=body, refresh=True)
+            updated += r.get('updated', 0)
+            print(f"Updated {vid}: {r.get('updated', 0)} docs -> \"{title}\"")
+        except Exception as e:
+            print(f"Error updating {vid}: {e}")
+
+    return {'status': 'completed', 'updated': updated, 'titles': title_map}

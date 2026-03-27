@@ -115,6 +115,7 @@ def search_with_fusion(query_text: str, top_k: int = None, project_id: str = '',
             'people': h.get('people', []),
             'genre': h.get('genre', ''),
             'upload_date': h.get('upload_date', ''),
+            'title': h.get('title', ''),
             'combined_score': h.get('score', 0),
         }
         for h in hits

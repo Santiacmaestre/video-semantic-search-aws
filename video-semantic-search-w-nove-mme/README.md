@@ -9,6 +9,7 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Deployment](#deployment)
+- [Quick Start (Testing After Deploy)](#quick-start-testing-after-deploy)
 - [Cleanup](#cleanup)
 - [How It Works](#how-it-works)
   - [1. Scene-Aware Segmentation](#1-scene-aware-segmentation)
@@ -18,7 +19,6 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
   - [5. LLM-Weighted Hybrid Search](#5-llm-weighted-hybrid-search)
   - [6. Entity Catalog and Visual Search](#6-entity-catalog-and-visual-search)
   - [7. Vector Engine Selection](#7-vector-engine-selection)
-- [Benchmarks](#benchmarks)
 - [Project Structure](#project-structure)
 - [AWS Services Used](#aws-services-used)
 - [Security](#security)
@@ -67,9 +67,10 @@ s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUN
 
 ### User Management
 
-**Create a user** in the Cognito User Pool:
+**Create a user** in the Cognito User Pool. The app uses the `USER_AUTH` flow, which does not support the `FORCE_CHANGE_PASSWORD` challenge — so you must set a permanent password immediately:
 
 ```bash
+# Step 1: Create user with temporary password
 aws cognito-idp admin-create-user \
   --user-pool-id <POOL_ID> \
   --username user@example.com \
@@ -77,9 +78,42 @@ aws cognito-idp admin-create-user \
   --user-attributes Name=email,Value=user@example.com Name=email_verified,Value=true \
   --message-action SUPPRESS \
   --region us-east-1
+
+# Step 2: Set a permanent password (required — USER_AUTH rejects temp passwords)
+aws cognito-idp admin-set-user-password \
+  --user-pool-id <POOL_ID> \
+  --username user@example.com \
+  --password 'YourPassword1!' \
+  --permanent \
+  --region us-east-1
 ```
 
-On first login, the user will be prompted to set a new permanent password (the temporary password is single-use). Password requirements: minimum 8 characters, with uppercase, lowercase, numbers, and symbols.
+Password requirements: minimum 8 characters, with uppercase, lowercase, numbers, and symbols.
+
+### Quick Start (Testing After Deploy)
+
+After deployment, the CDK outputs contain all the values you need:
+
+```
+video-search-v2-stack.AppUrl = https://<STATIC_DOMAIN>.cloudfront.net
+video-search-v2-stack.CognitoUserPoolId = <POOL_ID>
+```
+
+1. **Create a user** — follow the User Management steps above using the `CognitoUserPoolId` from CDK outputs.
+
+2. **Log in** — open the `AppUrl` in a browser and sign in with the email/password you set.
+
+3. **Create a project** — click "New Project", give it a name, and choose defaults (Haiku 4.5 analyzer, S3 Vectors engine).
+
+4. **Upload videos** — click "Upload Video" and select one or more video files. Each triggers the Step Functions pipeline (segmentation → embeddings/transcription/celebrity detection → captions → merge). Processing takes a few minutes per video depending on length.
+
+5. **Monitor progress** — click "Ingestion Jobs" to see pipeline status. Videos transition from `processing` → `completed`.
+
+6. **Search** — click "Search" and try queries like:
+   - `"red car driving"` — visual search
+   - `"Kevin taking a phone call"` — name + visual (tests BM25 `people^5` boost)
+   - `"talking about cloud computing"` — transcription-focused search
+   - `@entity_name` — visual entity search (requires entity in the Entity Catalog)
 
 ## Cleanup
 
@@ -253,7 +287,7 @@ When AWS Transcribe has produced text for a segment, it's injected via `{transcr
 
 After all segments are captioned, a second LLM call classifies the entire video into one genre by feeding all segment captions into a single prompt. Genre is stored in OpenSearch as a keyword field, so BM25 can match on it directly.
 
-Celebrity detection runs in parallel via Amazon Rekognition. Detected names are mapped to segments by timestamp overlap and stored in the `people` keyword field — enabling exact-match searches like "Werner Vogels".
+Celebrity detection runs in parallel via Amazon Rekognition. Detected names are mapped to segments by timestamp overlap and stored in the `people` text field — enabling partial name searches (e.g., searching "kevin" matches "Kevin Kilner").
 
 ### 4. OpenSearch Index Structure
 
@@ -280,7 +314,7 @@ def _index_settings(dimension=1024, vector_engine='s3_vectors'):
         "mappings": {
             "properties": {
                 "caption":              {"type": "text", "analyzer": "english"},
-                "people":               {"type": "keyword"},
+                "people":               {"type": "text"},
                 "genre":                {"type": "keyword"},
                 "upload_date":          {"type": "date"},
                 "visual_vector":        vec_field,
@@ -301,7 +335,7 @@ doc = {
     'video_id': video_id,
     'segment_id': f"seg_{idx:04d}",
     'caption': caption_map.get(idx, ''),          # BM25 searchable
-    'people': sorted(celeb_by_seg.get(idx, set())), # BM25 searchable (keyword)
+    'people': sorted(celeb_by_seg.get(idx, set())), # BM25 searchable (text)
     'genre': genre,                                 # BM25 searchable (keyword)
     'upload_date': today,
     'start_sec': seg['start_sec'],
@@ -327,16 +361,18 @@ Weights must sum to 1.0. Return ONLY valid JSON:
   "reasoning": "brief explanation"
 }
 
-Guidelines:
-- visual: appearance, colors, objects, actions, scenes
-- audio: sounds, music, noise, non-speech audio
-- transcription: spoken words, dialogue, narration
-- metadata: person name, genre, captions, factual attributes
+Weight assignment rules:
+1. When a query contains ANY proper noun or named entity, metadata should be 0.4.
+   BM25 keyword matching is the only way to match names and titles.
+2. Only assign audio weight for non-speech sounds, music, or acoustic qualities.
+3. Assign transcription weight only for spoken words or dialogue content.
 
-Examples:
-- "red car driving" → visual=0.9, metadata=0.1
-- "person saying hello" → transcription=0.5, visual=0.2, audio=0.2, metadata=0.1
-- "Cristiano Ronaldo" → metadata=0.6, visual=0.3, transcription=0.1"""
+Weight patterns (follow these strictly):
+- Pure visual, no names: "red car driving fast" → visual=1.0
+- Visual + a name/title: "car chase in [name]" → metadata=0.5, visual=0.4, transcription=0.1
+- Person doing something: "[Person] scores a goal" → metadata=0.3, visual=0.6, transcription=0.1
+- Speech content: "talking about climate change" → transcription=0.5, visual=0.2, audio=0.1, metadata=0.2
+- Sound-focused: "loud explosion sound" → audio=0.7, visual=0.3"""
 ```
 
 The search pipeline runs in three phases:
@@ -370,7 +406,7 @@ vectors = {m: v for m, v in vectors.items() if weights_data.get(m, 0) >= 0.05}
 # BM25 sub-query with field boosting
 queries = [{"multi_match": {
     "query": query_text,
-    "fields": ["people^3", "caption^2", "title"],
+    "fields": ["people^5", "caption", "title^5"],
     "type": "best_fields", "fuzziness": "AUTO"
 }}]
 
@@ -406,7 +442,7 @@ The normalization pipeline works in two steps:
 
 For example, with query "Werner Vogels talking about serverless":
 - LLM assigns: `metadata=0.4, visual=0.1, transcription=0.4, audio=0.1`
-- A segment where Werner is speaking about serverless scores high on both BM25 (name match in `people^3`) and transcription kNN (semantic match on "serverless")
+- A segment where Werner is speaking about serverless scores high on both BM25 (name match in `people^5`) and transcription kNN (semantic match on "serverless")
 - A segment showing Werner but discussing databases scores high on BM25 but low on transcription kNN, so it ranks lower
 
 ### 6. Entity Catalog and Visual Search
@@ -494,20 +530,6 @@ With S3 Vectors, OpenSearch delegates vector storage and kNN computation to S3. 
 
 The vector engine is set at project creation and cannot be changed after (the OpenSearch index mapping is immutable). Entity embeddings always use S3 Vectors regardless of the project's engine choice.
 
-## Benchmarks
-
-See [`notebooks/`](notebooks/) for a comparison of three search approaches using standard retrieval metrics (Recall@5, MRR, NDCG@10):
-
-| Approach | Description |
-|---|---|
-| **Naive** | Single text embedding → visual-only kNN |
-| **Equal-weight** | kNN across visual + audio + transcription, equal weights |
-| **Optimized hybrid** | LLM weight analysis + BM25 + weighted multi-modal kNN with min-max normalization |
-
-Test videos:
-- **Meridian** (Netflix Open Content) — CC BY 4.0
-- **ASC StEM2 "The Mission"** — ASWF Digital Assets License v1.1
-
 ## Project Structure
 
 ```
@@ -533,8 +555,7 @@ Test videos:
 │   ├── stacks/                        # Main stack definition
 │   └── components/                    # Modular constructs (storage, compute, search, etc.)
 ├── frontend-static/             # Vanilla JS SPA (no build step)
-├── deployment/                  # Dockerfile for pipeline Lambda container
-└── notebooks/                   # Benchmark notebooks
+└── deployment/                  # Dockerfile for pipeline Lambda container
 ```
 
 ## AWS Services Used

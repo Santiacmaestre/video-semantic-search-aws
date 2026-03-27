@@ -22,7 +22,7 @@ def _index_settings(dimension=1024, vector_engine='s3_vectors'):
                 "video_id": {"type": "keyword"}, "segment_id": {"type": "keyword"},
                 "title": {"type": "text"},
                 "caption": {"type": "text", "analyzer": "english"},
-                "people": {"type": "keyword"}, "genre": {"type": "keyword"},
+                "people": {"type": "text"}, "genre": {"type": "keyword"},
                 "upload_date": {"type": "date"},
                 "start_sec": {"type": "float"}, "end_sec": {"type": "float"},
                 "visual_vector": vec_field,
@@ -118,7 +118,7 @@ def hybrid_search(project_id: str, query_text: str, vectors: dict, weights: list
     if query_text.strip():
         queries.append({"multi_match": {
             "query": query_text,
-            "fields": ["people^3", "caption^2", "title"],
+            "fields": ["people^5", "caption", "title^5"],
             "type": "best_fields", "fuzziness": "AUTO"
         }})
         active_weights.append(weights[0])
@@ -169,6 +169,7 @@ def hybrid_search(project_id: str, query_text: str, vectors: dict, weights: list
                 'people': src.get('people', []),
                 'genre': src.get('genre'),
                 'upload_date': src.get('upload_date', ''),
+                'title': src.get('title', ''),
                 'score': hit.get('_score', 0)
             }
             if return_vectors and 'visual_vector' in src:
