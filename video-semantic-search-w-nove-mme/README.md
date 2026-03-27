@@ -110,10 +110,9 @@ video-search-v2-stack.CognitoUserPoolId = <POOL_ID>
 5. **Monitor progress** — click "Ingestion Jobs" to see pipeline status. Videos transition from `processing` → `completed`.
 
 6. **Search** — click "Search" and try queries like:
-   - `"red car driving"` — visual search
-   - `"Kevin taking a phone call"` — name + visual (tests BM25 `people^5` boost)
-   - `"talking about cloud computing"` — transcription-focused search
-   - `@entity_name` — visual entity search (requires entity in the Entity Catalog)
+   - `"Meridian downtown shots"` — visual + named title search
+   - `"Picture of 3 men hanging on the wall in Meridian"` — named entity + visual description
+   - `"Kevin talking on a phone near a vintage car"` — person name + visual scene
 
 ## Cleanup
 
