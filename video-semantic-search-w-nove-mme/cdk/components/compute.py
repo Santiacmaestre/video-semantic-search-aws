@@ -100,10 +100,8 @@ class ComputeConstruct(Construct):
             ],
             resources=[
                 f"arn:aws:bedrock:us-east-1::foundation-model/{NOVA_MODEL_ID}",
-                # Nova Lite (us.* cross-region inference profile for captions/genre)
+                # Nova Lite (direct model for captions/genre)
                 f"arn:aws:bedrock:us-east-1::foundation-model/{NOVA_LITE_MODEL_ID}",
-                f"arn:aws:bedrock:us-east-1:{account_id}:inference-profile/{NOVA_LITE_MODEL_ID}",
-                f"arn:aws:bedrock:*::foundation-model/{NOVA_LITE_MODEL_ID.replace('us.', '')}",
                 # Claude (global.* cross-region inference profile for weight analysis)
                 f"arn:aws:bedrock:us-east-1::foundation-model/{CLAUDE_MODEL_ID}",
                 f"arn:aws:bedrock:us-east-1:{account_id}:inference-profile/{CLAUDE_MODEL_ID}",
