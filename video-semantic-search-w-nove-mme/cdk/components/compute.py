@@ -130,6 +130,17 @@ class ComputeConstruct(Construct):
             resources=["*"],
         ))
 
+        # Cognito admin (bootstrap demo user)
+        self.lambda_role.add_to_policy(iam.PolicyStatement(
+            actions=[
+                "cognito-idp:AdminCreateUser",
+                "cognito-idp:AdminSetUserPassword",
+                "cognito-idp:AdminGetUser",
+                "cognito-idp:AdminDeleteUser",
+            ],
+            resources=["*"],
+        ))
+
         # Transcribe (scoped to job name prefix)
         self.lambda_role.add_to_policy(iam.PolicyStatement(
             actions=[
