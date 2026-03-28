@@ -17,6 +17,7 @@ from components.processing import ProcessingConstruct
 from components.api import ApiConstruct
 from components.monitoring import MonitoringConstruct
 from components.frontend_deployment import FrontendDeploymentConstruct
+from components.bootstrap import BootstrapConstruct
 
 
 class VideoSearchStack(Stack):
@@ -174,6 +175,19 @@ class VideoSearchStack(Stack):
             region=region,
         )
 
+        # 15. Bootstrap demo user + sample video
+        bootstrap = BootstrapConstruct(
+            self, "Bootstrap",
+            user_pool=auth.user_pool,
+            videos_bucket=storage.videos_bucket,
+            videos_table=storage.videos_table,
+            projects_table=storage.projects_table,
+            lambda_role=compute.lambda_role,
+            shared_layer=compute.shared_layer,
+            vector_bucket_name=storage.vector_bucket_name,
+            opensearch_endpoint=search.domain_endpoint,
+        )
+
         # --- Outputs ---
         CfnOutput(self, "ApiEndpoint", value=api.api_endpoint, description="API Gateway endpoint URL")
         CfnOutput(self, "CognitoUserPoolId", value=auth.user_pool.user_pool_id, description="Cognito User Pool ID")
@@ -187,3 +201,5 @@ class VideoSearchStack(Stack):
         CfnOutput(self, "StateMachineArn", value=processing.state_machine.state_machine_arn, description="Step Functions state machine ARN")
         CfnOutput(self, "OpenSearchEndpoint", value=search.domain_endpoint, description="OpenSearch domain endpoint")
         CfnOutput(self, "AppUrl", value=f"https://{cdn.static_domain_name}", description="Application URL")
+        CfnOutput(self, "DemoUserEmail", value="demo@workshop.com", description="Demo user email for first login")
+        CfnOutput(self, "DemoUserPassword", value="Demo1234!", description="Demo user password for first login")
