@@ -26,8 +26,24 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 
 ## Architecture
 
-![Architecture](image.png)
+![Architecture](architecture-diagram.png)
 
+### Ingestion Workflow
+
+1. **Upload** — Users upload video content through the browser. Files are stored in Amazon S3, which triggers the AWS Step Functions orchestrator.
+2. **Shot Segmentation** — The orchestrator invokes a Lambda function that downloads the video from S3 and uses FFmpeg scene detection to split it into semantically coherent segments (shots).
+3. **Parallel Processing** — Three branches execute concurrently for each segment:
+   - **Generate Embeddings** — Amazon Nova Multi-Modal Embeddings (MME) generates 1024-dimensional vectors for visual and audio modalities, stored in Amazon S3 Vectors.
+   - **Generate Transcription** — Amazon Transcribe converts speech to text. The transcript is split by segment timestamps, and per-segment text embeddings are generated via Nova MME and stored in S3 Vectors.
+   - **Detect Celebrities** — Amazon Rekognition identifies known individuals appearing in each segment.
+4. **Generate Captions & Genre** — Amazon Nova 2 Lite synthesizes segment-level captions and genre labels using the visual content and transcription text from step 3.
+5–6. **Merge & Index** — The Merge Lambda assembles all metadata (captions, transcriptions, celebrity names, genre) into OpenSearch documents and stores the corresponding vector embeddings in Amazon S3 Vectors for kNN retrieval.
+
+### Search Workflow
+
+7. **Authentication & Access** — Users authenticate via Amazon Cognito and access the application through Amazon CloudFront, which serves the static frontend.
+8. **Query Analysis** — The search request passes through API Gateway to the Search Lambda, which calls Amazon Bedrock (Anthropic Claude Haiku) to analyze the query intent and assign relevance weights (0.0–1.0) across four modalities: visual, audio, transcription, and metadata. These weights determine how much each signal contributes to the final ranking. DynamoDB is queried for project and video metadata.
+9. **Hybrid Search** — The Search Lambda executes a hybrid query combining BM25 text matching (people, captions, titles) with per-modality kNN vector search. Query text is embedded via Amazon Nova MME, and vector similarity is computed against embeddings stored in Amazon S3 Vectors (acting as an external vector engine for OpenSearch). OpenSearch fuses the BM25 and kNN scores using weighted min-max normalization based on the weights from step 8.
 
 ## Prerequisites
 
