@@ -27,14 +27,14 @@ def lambda_handler(event, context):
         if project_id:
             try:
                 proj = dynamodb.Table(PROJECTS_TABLE).get_item(Key={'project_id': project_id}).get('Item', {})
-                custom_id = proj.get('analyzer_model_id')
+                custom_id = proj.get('analyzer_model')
                 if custom_id:
                     analyzer_model_id = custom_id
             except Exception:
                 pass
 
         results = search_with_fusion(query, project_id=project_id, analyzer_model_id=analyzer_model_id)
-        results['analyzer_model_id'] = analyzer_model_id
+        results['analyzer_model'] = analyzer_model_id
         return respond(200, results)
 
     except Exception as e:

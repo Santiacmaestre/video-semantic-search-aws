@@ -122,7 +122,7 @@ async function loadProjects() {
             <h3>${escapeHtml(p.name)}</h3>
             <div class="project-badges">
                 <span class="project-badge" style="background:#e3f2fd;color:#1565c0;">Nova MME</span>
-                <span class="project-badge" style="background:#f3e8ff;color:#7c3aed;">${escapeHtml((getAnalyzerModels(p).find(m => m.id === p.analyzer_model_id) || DEFAULT_ANALYZER).name)}</span>
+                <span class="project-badge" style="background:#f3e8ff;color:#7c3aed;">${escapeHtml((getAnalyzerModels(p).find(m => m.id === p.analyzer_model) || DEFAULT_ANALYZER).name)}</span>
                 <span class="project-badge" style="background:${p.vector_engine === 'opensearch' ? '#fef3c7;color:#92400e' : '#dcfce7;color:#166534'}">${p.vector_engine === 'opensearch' ? 'OpenSearch kNN' : 'S3 Vectors'}</span>
             </div>
             <div class="project-meta">${p.video_count || 0} videos \u00B7 Created ${new Date(p.created_at).toLocaleDateString()}</div>
@@ -199,7 +199,7 @@ async function createProject() {
     const body = {
         name,
         embedding_model: 'nova-mme',
-        analyzer_model_id: document.getElementById('newAnalyzerModelSelect').value,
+        analyzer_model: document.getElementById('newAnalyzerModelSelect').value,
         analyzer_models: getAnalyzerModelsFromSelect('newAnalyzerModelSelect'),
         metadata_model: 'nova-lite',
         segment_duration: parseInt(document.getElementById('newSegDuration')?.value || '10'),
@@ -221,7 +221,7 @@ function getAnalyzerModels(project) {
 
 function buildModelOptions(project) {
     const models = getAnalyzerModels(project);
-    const active = project?.analyzer_model_id || DEFAULT_ANALYZER.id;
+    const active = project?.analyzer_model || DEFAULT_ANALYZER.id;
     return models.map(m => `<option value="${escapeHtml(m.id)}" ${m.id === active ? 'selected' : ''}>${escapeHtml(m.name)}</option>`).join('');
 }
 
@@ -298,14 +298,14 @@ function showProjectSettings() {
 async function saveProjectSettings() {
     const body = {
         name: document.getElementById('editProjectName').value.trim(),
-        analyzer_model_id: document.getElementById('editAnalyzerModelSelect').value,
+        analyzer_model: document.getElementById('editAnalyzerModelSelect').value,
         analyzer_models: getAnalyzerModelsFromSelect('editAnalyzerModelSelect'),
         segment_duration: parseInt(document.getElementById('editSegDuration').value),
     };
 
     await apiCall(`/projects/${activeProject.project_id}`, { method: 'PUT', body: JSON.stringify(body) });
     activeProject.name = body.name;
-    activeProject.analyzer_model_id = body.analyzer_model_id;
+    activeProject.analyzer_model = body.analyzer_model;
     activeProject.analyzer_models = body.analyzer_models;
     document.getElementById('projectTitle').textContent = body.name;
     document.querySelector('.modal')?.remove();
@@ -576,7 +576,7 @@ async function performSearch() {
         bedrockLatency.textContent = `${ms}ms`;
         if (data?.results) {
             allResults = data.results;
-            displayWeights(data.weights, data.reasoning, data.timings, data.analyzer_model_id);
+            displayWeights(data.weights, data.reasoning, data.timings, data.analyzer_model);
             displayResultsPage(bedrockResults);
             bedrockStatus.textContent = `Found ${data.total} results`;
         } else {

@@ -71,7 +71,7 @@ def lambda_handler(event, context):
                 'project_id': pid,
                 'user_id': user_id,
                 'name': body.get('name', 'Untitled'),
-                'analyzer_model': body.get('analyzer_model', 'nova-micro'),
+                'analyzer_model': body.get('analyzer_model', 'global.anthropic.claude-haiku-4-5-20251001-v1:0'),
                 'segment_duration': int(body.get('segment_duration', 10)),
                 'metadata_model': body.get('metadata_model', 'nova-lite'),
                 'vector_engine': body.get('vector_engine', 's3_vectors'),
