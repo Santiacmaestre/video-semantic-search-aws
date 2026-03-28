@@ -176,6 +176,8 @@ class VideoSearchStack(Stack):
         )
 
         # 15. Bootstrap demo user + sample video
+        # Must run after S3 event notification is wired (orchestrator_fn),
+        # otherwise the video upload won't trigger the pipeline on fresh deploys.
         bootstrap = BootstrapConstruct(
             self, "Bootstrap",
             user_pool=auth.user_pool,
@@ -187,6 +189,8 @@ class VideoSearchStack(Stack):
             vector_bucket_name=storage.vector_bucket_name,
             opensearch_endpoint=search.domain_endpoint,
         )
+        bootstrap.node.add_dependency(storage.videos_bucket)
+        bootstrap.node.add_dependency(compute.orchestrator_fn)
 
         # --- Outputs ---
         CfnOutput(self, "ApiEndpoint", value=api.api_endpoint, description="API Gateway endpoint URL")
