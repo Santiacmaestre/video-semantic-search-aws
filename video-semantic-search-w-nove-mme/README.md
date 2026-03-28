@@ -43,9 +43,9 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 ### Search Workflow
 
 7. **Authentication & Access** — Users authenticate via Amazon Cognito and access the application through Amazon CloudFront, which serves the static frontend.
-8. **Query Analysis** — The search request passes through API Gateway to the Search Lambda, which calls Amazon Bedrock (Anthropic Claude Haiku) to analyze the query intent and assign relevance weights (0.0–1.0) across four modalities: visual, audio, transcription, and metadata. These weights determine how much each signal contributes to the final ranking. DynamoDB is queried for project and video metadata.
-9. **Hybrid Search** — The Search Lambda executes a hybrid query combining BM25 text matching (people, captions, titles) with per-modality kNN vector search against Amazon OpenSearch Service and Amazon S3 Vectors (acting as an external vector engine for OpenSearch).
-10. **Query Embedding** — The search query text is embedded via Amazon Nova MME to generate vectors for kNN similarity search. OpenSearch fuses the BM25 and kNN scores using weighted min-max normalization based on the weights from step 8.
+8. **Hybrid Search** — The search request passes through API Gateway to the Search Lambda, which executes a hybrid query combining BM25 text matching (people, captions, titles) with per-modality kNN vector search against Amazon OpenSearch Service and Amazon S3 Vectors (acting as an external vector engine for OpenSearch). DynamoDB is queried for project and video metadata.
+9. **Query Weight Analysis** — Amazon Bedrock (Anthropic Claude Haiku) analyzes the query intent and assigns relevance weights (0.0–1.0) across four modalities: visual, audio, transcription, and metadata. These weights determine how much each signal contributes to the final ranking.
+10. **Query Embedding** — The search query text is embedded via Amazon Nova MME to generate vectors for kNN similarity search. OpenSearch fuses the BM25 and kNN scores using weighted min-max normalization based on the weights from step 9.
 
 ## Prerequisites
 
