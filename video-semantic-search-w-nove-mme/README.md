@@ -2,11 +2,14 @@
 
 This sample demonstrates how to build a semantic video search engine that combines OpenSearch BM25 text search with kNN vector search across visual, audio, and transcription modalities — powered by [Amazon Nova Multimodal Embeddings](https://docs.aws.amazon.com/nova/latest/userguide/multimodal-embeddings.html) and an LLM-driven query weight analyzer.
 
+![Screenshot](statics/screenshot.png)
+
 Upload a video → the pipeline segments it at scene boundaries, generates per-segment embeddings (visual + audio), transcribes speech, captions each clip, classifies genre, and detects celebrities. All of this feeds into a hybrid search index where natural language queries return the most relevant video segments, ranked by a fusion of text matching and semantic similarity.
 
 ## Table of Contents
 
 - [Architecture](#architecture)
+- [Performance Results](#performance-results)
 - [Prerequisites](#prerequisites)
 - [Deployment](#deployment)
 - [Quick Start (Testing After Deploy)](#quick-start-testing-after-deploy)
@@ -19,6 +22,7 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
   - [5. LLM-Weighted Hybrid Search](#5-llm-weighted-hybrid-search)
   - [6. Entity Catalog and Visual Search](#6-entity-catalog-and-visual-search)
   - [7. Vector Engine Selection](#7-vector-engine-selection)
+- [Performance Results](#performance-results)
 - [Project Structure](#project-structure)
 - [AWS Services Used](#aws-services-used)
 - [Security](#security)
@@ -26,7 +30,7 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 
 ## Architecture
 
-![Architecture](architecture-diagram.png)
+![Architecture](statics/architecture-diagram.png)
 
 ### Ingestion Workflow
 
@@ -46,6 +50,41 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 8. **Hybrid Search** — The search request passes through API Gateway to the Search Lambda, which executes a hybrid query combining BM25 text matching (people, captions, titles) with per-modality kNN vector search against Amazon OpenSearch Service and Amazon S3 Vectors (acting as an external vector engine for OpenSearch). DynamoDB is queried for project and video metadata. The following two sub-steps run in parallel before the hybrid query is constructed:
    - **9. Query Weight Analysis** — Amazon Bedrock (Anthropic Claude Haiku) analyzes the query intent and assigns relevance weights (0.0–1.0) across four modalities: visual, audio, transcription, and metadata. These weights determine how much each signal contributes to the final ranking.
    - **10. Query Embedding** — The search query text is embedded via Amazon Nova MME to generate vectors for kNN similarity search. OpenSearch fuses the BM25 and kNN scores using weighted min-max normalization based on the weights from step 9.
+
+## Performance Results
+
+We benchmarked the optimized hybrid search approach against a baseline implementation using 10 internal long-form videos (5–20 minutes each) and 20 queries spanning visual, audio, transcript, and metadata-focused searches.
+
+**Baseline**: Nova Multimodal Embeddings with a single unified vector per 10-second segment, one index, one kNN query.
+
+**Hybrid search with Nova MME (our optimized approach)**: Separate visual, audio, and transcript embeddings + structured metadata enrichment + intent-aware routing with dynamic modality weighting.
+
+![Performance Results](statics/results.png)
+
+| Metric | Baseline | Hybrid Search w/ Nova MME | Improvement |
+|--------|----------|---------------------------|-------------|
+| **Recall@5** | 51% | 90% | +39 pp |
+| **Recall@10** | 64% | 95% | +31 pp |
+| **MRR** | 48% | 90% | +42 pp |
+| **NDCG@10** | 54% | 88% | +34 pp |
+
+**Metrics explained**:
+- **Recall@5/10**: Of all relevant segments, what fraction appears in the top 5/10 results? Measures coverage.
+- **MRR (Mean Reciprocal Rank)**: 1/rank of the first relevant result, averaged across queries. Measures how quickly you find something relevant.
+- **NDCG@10**: Normalized Discounted Cumulative Gain rewards relevant results ranked higher. A standard ranking quality metric.
+
+Our optimized approach delivers ~40 percentage point improvements across all metrics, validating the four core architectural decisions: semantic segmentation preserves content continuity, separate embeddings enable precise search control, metadata enrichment captures factual entities, and intent-aware routing ensures the right signals drive each query.
+
+**Example benchmark queries**:
+- `"Meridian title page appears"` — metadata + visual
+- `"Picture of 3 men hanging on the wall in Meridian"` — visual + metadata
+- `"Scott driving seeing a woman in the rearview mirror"` — visual + metadata
+- `"Kevin taking a phone call next to a vintage car"` — visual + metadata
+- `"Someone calling captain foster"` — transcription + metadata
+- `"Thunder storm in the background"` — audio + visual
+- `"Dark cave in Meridian"` — visual + metadata
+
+Here is how you can deploy the solution and try it yourself.
 
 ## Prerequisites
 
@@ -85,7 +124,7 @@ s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUN
 
 ### What Happens on Deploy
 
-Deployment automatically bootstraps the app with a **demo user** and a **sample video** (Netflix's open-source Meridian short film). The bootstrap process:
+Deployment automatically bootstraps the app with a **demo user** and a **sample video** ([Meridian](https://en.wikipedia.org/wiki/Meridian_(film)), a 2016 short film by Netflix released under the [Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International](https://creativecommons.org/licenses/by-nc-nd/4.0/) license). The bootstrap process:
 
 1. Creates a Cognito user (`demo@workshop.com` / `Demo1234!`)
 2. Creates a "Meridian Demo" project with OpenSearch HNSW vector engine
@@ -108,9 +147,12 @@ video-search-v2-stack.AppUrl = https://<STATIC_DOMAIN>.cloudfront.net
 2. **Wait for ingestion** — the "Meridian Demo" project should show the video as `completed` (if the pipeline is still running, it will show `processing` — wait a few minutes).
 
 3. **Search** — click "Search" and try queries like:
-   - `"Meridian downtown shots"` — visual + named title search
-   - `"Picture of 3 men hanging on the wall in Meridian"` — named entity + visual description
-   - `"Kevin talking on a phone near a vintage car"` — person name + visual scene
+   - `"Meridian title page appears"` — metadata + visual
+   - `"Scott driving seeing a woman in the rearview mirror"` — visual + metadata
+   - `"Kevin taking a phone call next to a vintage car"` — visual + metadata
+   - `"Someone calling captain foster"` — transcription + metadata
+   - `"Thunder storm in the background"` — audio + visual
+   - `"Dark cave in Meridian"` — visual + metadata
 
 4. **Upload your own videos** — click "Upload Video" to add more content. Processing takes a few minutes per video.
 
@@ -190,6 +232,8 @@ aws cognito-idp delete-user-pool --user-pool-id <POOL_ID> --region us-east-1
 ### 1. Scene-Aware Segmentation
 
 Videos need to be split into segments for embedding and captioning. Naive fixed-duration cuts (every 10 seconds) often split mid-sentence or mid-action. Scene-aware segmentation aligns segment boundaries to visual transitions so cuts feel natural.
+
+![Naive fixed cuts](statics/scene-aware.png)
 
 **Scene detection** uses FFmpeg's `scene` filter, which compares consecutive frames and outputs a score (0.0–1.0) representing how different they are. A threshold of 0.3 catches hard cuts, fades, and major camera movements while ignoring minor motion:
 
@@ -278,6 +322,8 @@ def _embed_clip(clip_uri, video_format='mp4'):
 ```
 
 Why separate visual and audio embeddings instead of a single fused one? Because search queries have different intents. "Red car driving" is purely visual — the audio embedding would add noise. "Dog barking loudly" is primarily audio. Keeping them separate lets the search pipeline weight each modality independently per query.
+
+![Seperate embeddings](statics/seperate-embeddings.png)
 
 At search time, text queries are embedded with modality-specific purposes:
 
