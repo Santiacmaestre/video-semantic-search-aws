@@ -65,9 +65,42 @@ s3vectors = boto3.client('s3vectors', region_name='us-east-1')
 s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUNT_ID>')
 ```
 
-### User Management
+### What Happens on Deploy
 
-**Create a user** in the Cognito User Pool. The app uses the `USER_AUTH` flow, which does not support the `FORCE_CHANGE_PASSWORD` challenge — so you must set a permanent password immediately:
+Deployment automatically bootstraps the app with a **demo user** and a **sample video** (Netflix's open-source Meridian short film). The bootstrap process:
+
+1. Creates a Cognito user (`demo@workshop.com` / `Demo1234!`)
+2. Creates a "Meridian Demo" project with OpenSearch HNSW vector engine
+3. Downloads and uploads the Meridian video to S3, triggering the ingestion pipeline
+
+The pipeline runs asynchronously (~3-5 minutes). After it completes, the demo account has a fully searchable video ready to go.
+
+Demo credentials are shown in the CDK stack outputs:
+
+```
+video-search-v2-stack.DemoUserEmail = demo@workshop.com
+video-search-v2-stack.DemoUserPassword = Demo1234!
+video-search-v2-stack.AppUrl = https://<STATIC_DOMAIN>.cloudfront.net
+```
+
+### Quick Start (Testing After Deploy)
+
+1. **Log in** — open the `AppUrl` from CDK outputs and sign in with `demo@workshop.com` / `Demo1234!`.
+
+2. **Wait for ingestion** — the "Meridian Demo" project should show the video as `completed` (if the pipeline is still running, it will show `processing` — wait a few minutes).
+
+3. **Search** — click "Search" and try queries like:
+   - `"Meridian downtown shots"` — visual + named title search
+   - `"Picture of 3 men hanging on the wall in Meridian"` — named entity + visual description
+   - `"Kevin talking on a phone near a vintage car"` — person name + visual scene
+
+4. **Upload your own videos** — click "Upload Video" to add more content. Processing takes a few minutes per video.
+
+5. **Create new projects** — click the back arrow, then "New Project" to start fresh with your own project settings.
+
+### Additional Users
+
+To create additional users in the Cognito User Pool, use the AWS CLI. The app uses the `USER_AUTH` flow, which does not support the `FORCE_CHANGE_PASSWORD` challenge — so you must set a permanent password immediately:
 
 ```bash
 # Step 1: Create user with temporary password
@@ -89,30 +122,6 @@ aws cognito-idp admin-set-user-password \
 ```
 
 Password requirements: minimum 8 characters, with uppercase, lowercase, numbers, and symbols.
-
-### Quick Start (Testing After Deploy)
-
-After deployment, the CDK outputs contain all the values you need:
-
-```
-video-search-v2-stack.AppUrl = https://<STATIC_DOMAIN>.cloudfront.net
-video-search-v2-stack.CognitoUserPoolId = <POOL_ID>
-```
-
-1. **Create a user** — follow the User Management steps above using the `CognitoUserPoolId` from CDK outputs.
-
-2. **Log in** — open the `AppUrl` in a browser and sign in with the email/password you set.
-
-3. **Create a project** — click "New Project", give it a name, and choose defaults (Haiku 4.5 analyzer, S3 Vectors engine).
-
-4. **Upload videos** — click "Upload Video" and select one or more video files. Each triggers the Step Functions pipeline (segmentation → embeddings/transcription/celebrity detection → captions → merge). Processing takes a few minutes per video depending on length.
-
-5. **Monitor progress** — click "Ingestion Jobs" to see pipeline status. Videos transition from `processing` → `completed`.
-
-6. **Search** — click "Search" and try queries like:
-   - `"Meridian downtown shots"` — visual + named title search
-   - `"Picture of 3 men hanging on the wall in Meridian"` — named entity + visual description
-   - `"Kevin talking on a phone near a vintage car"` — person name + visual scene
 
 ## Cleanup
 
@@ -542,7 +551,8 @@ The vector engine is set at project creation and cannot be changed after (the Op
 │   ├── orchestrator_function.py       # S3 trigger → Step Functions
 │   ├── search_function.py             # Hybrid search API endpoint
 │   ├── entity_function.py             # Entity CRUD + image embedding
-│   └── project_function.py            # Project CRUD
+│   ├── project_function.py            # Project CRUD
+│   └── bootstrap_function.py          # CDK custom resource: demo user + sample video
 ├── lib/                         # Shared library (Lambda layer)
 │   ├── search_engine.py               # Hybrid search pipeline
 │   ├── opensearch_client.py           # OpenSearch hybrid query builder
