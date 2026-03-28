@@ -33,12 +33,12 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 1. **Upload** — Users upload video content through the browser. Files are stored in Amazon S3, which triggers the AWS Step Functions orchestrator.
 2. **Shot Segmentation** — The orchestrator invokes a Lambda function that downloads the video from S3 and uses FFmpeg scene detection to split it into semantically coherent segments (shots).
 3. **Parallel Processing** — Three branches execute concurrently for each segment:
-   - **Generate Embeddings** — Amazon Nova Multi-Modal Embeddings (MME) generates 1024-dimensional vectors for visual and audio modalities, stored in Amazon S3 Vectors.
-   - **Generate Transcription** — Amazon Transcribe converts speech to text. The transcript is split by segment timestamps, and per-segment text embeddings are generated via Nova MME and stored in S3 Vectors.
-   - **Detect Celebrities** — Amazon Rekognition identifies known individuals appearing in each segment.
+   - **Generate Embeddings** — Amazon Nova Multi-Modal Embeddings (MME) generates 1024-dimensional vectors for visual and audio modalities, stored immediately in Amazon S3 Vectors.
+   - **Generate Transcription** — Amazon Transcribe converts the full video's speech to text. The transcript is aligned to segment boundaries, and per-segment text embeddings are generated via Nova MME and stored in S3 Vectors.
+   - **Detect Celebrities** — Amazon Rekognition identifies known individuals across the full video; celebrities are mapped to segments by timestamp in the Merge step.
 4. **Generate Captions & Genre** — Amazon Nova 2 Lite synthesizes segment-level captions and genre labels using the visual content and transcription text from step 3.
-5. **Merge & Index** — The Merge Lambda assembles all metadata (captions, transcriptions, celebrity names, genre) into OpenSearch documents.
-6. **Store Embeddings** — The corresponding vector embeddings are stored in Amazon S3 Vectors for kNN retrieval.
+5. **Merge** — The Merge Lambda assembles all metadata (captions, transcriptions, celebrity names, genre) and retrieves the vector embeddings stored in step 3 from S3 Vectors.
+6. **Index** — Complete segment documents with metadata and vectors are bulk-indexed into Amazon OpenSearch Service.
 
 ### Search Workflow
 
@@ -46,6 +46,8 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 8. **Hybrid Search** — The search request passes through API Gateway to the Search Lambda, which executes a hybrid query combining BM25 text matching (people, captions, titles) with per-modality kNN vector search against Amazon OpenSearch Service and Amazon S3 Vectors (acting as an external vector engine for OpenSearch). DynamoDB is queried for project and video metadata.
 9. **Query Weight Analysis** — Amazon Bedrock (Anthropic Claude Haiku) analyzes the query intent and assigns relevance weights (0.0–1.0) across four modalities: visual, audio, transcription, and metadata. These weights determine how much each signal contributes to the final ranking.
 10. **Query Embedding** — The search query text is embedded via Amazon Nova MME to generate vectors for kNN similarity search. OpenSearch fuses the BM25 and kNN scores using weighted min-max normalization based on the weights from step 9.
+
+> Steps 9 and 10 run concurrently before the hybrid query in step 8 is constructed and executed.
 
 ## Prerequisites
 
