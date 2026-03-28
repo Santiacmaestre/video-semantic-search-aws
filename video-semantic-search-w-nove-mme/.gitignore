@@ -31,9 +31,6 @@ terraform/.terraform.lock.hcl
 *.log
 /tmp/
 .env.lambda
-*.png
-!image.png
-!architecture-diagram.png
 frontend-static/js/config.js
 terraform-v2/terraform.tfstate
 terraform-v2/terraform.tfstate.backup
