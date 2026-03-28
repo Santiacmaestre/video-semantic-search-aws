@@ -12,9 +12,6 @@ COPY lib/search_engine.py ${LAMBDA_TASK_ROOT}/
 COPY lib/prompt_analyzer.py ${LAMBDA_TASK_ROOT}/
 COPY lib/nova_embeddings.py ${LAMBDA_TASK_ROOT}/
 
-# Copy environment file
-COPY .env.lambda ${LAMBDA_TASK_ROOT}/.env
-
 RUN yum install -y tar xz && \
     curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o /tmp/ffmpeg.tar.xz && \
     tar -xf /tmp/ffmpeg.tar.xz -C /tmp && \
