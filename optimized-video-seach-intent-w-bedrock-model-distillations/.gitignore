@@ -8,7 +8,7 @@ __pycache__/
 
 # Generated eval datasets (per-model, created at runtime)
 eval_dataset_*.jsonl
-!eval_dataset.jsonl
+!eval_dataset_v2.jsonl
 
 # Generated charts
 *.png
