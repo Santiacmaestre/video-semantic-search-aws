@@ -11,7 +11,7 @@ import os
 bedrock = boto3.client('bedrock-runtime', region_name=os.getenv('AWS_REGION', 'us-east-1'))
 s3 = boto3.client('s3', region_name=os.getenv('AWS_REGION', 'us-east-1'))
 
-NOVA_LITE_MODEL = 'us.amazon.nova-2-lite-v1:0'
+NOVA_LITE_MODEL = os.environ.get('NOVA_LITE_MODEL_ID', 'us.amazon.nova-2-lite-v1:0')
 
 GENRES = [
     'Sports', 'News', 'Entertainment', 'Documentary', 'Education',

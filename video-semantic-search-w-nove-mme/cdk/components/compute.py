@@ -37,7 +37,7 @@ class ComputeConstruct(Construct):
     ) -> None:
         super().__init__(scope, id)
 
-        nova_analyzer_model_id = scope.node.try_get_context("nova_analyzer_model_id") or "anthropic.claude-haiku-4-5-20251001-v1:0"
+        nova_analyzer_model_id = scope.node.try_get_context("nova_analyzer_model_id") or CLAUDE_MODEL_ID
 
         # --- Shared IAM Role ---
         self.lambda_role = iam.Role(
@@ -314,6 +314,7 @@ class ComputeConstruct(Construct):
             timeout_secs=600, log_retention_days=14,
             environment={
                 "S3_VIDEO_BUCKET": videos_bucket.bucket_name,
+                "NOVA_LITE_MODEL_ID": NOVA_LITE_MODEL_ID,
             },
         )
 

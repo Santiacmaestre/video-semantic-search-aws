@@ -14,7 +14,7 @@ from aws_cdk import (
     custom_resources as cr,
     BundlingOptions,
 )
-from config import LAMBDA_RUNTIME
+from config import LAMBDA_RUNTIME, CLAUDE_MODEL_ID
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -58,6 +58,7 @@ class BootstrapConstruct(Construct):
             environment={
                 "OPENSEARCH_ENDPOINT": f"https://{opensearch_endpoint}",
                 "S3_VECTOR_BUCKET": vector_bucket_name,
+                "CLAUDE_MODEL_ID": CLAUDE_MODEL_ID,
             },
         )
 

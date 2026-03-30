@@ -12,7 +12,7 @@ import boto3
 
 bedrock = boto3.client('bedrock-runtime', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
 
-NOVA_MODEL_ID = 'amazon.nova-2-multimodal-embeddings-v1:0'
+NOVA_MODEL_ID = os.environ.get('NOVA_MODEL_ID', 'amazon.nova-2-multimodal-embeddings-v1:0')
 NOVA_DIMENSION = 1024
 
 
