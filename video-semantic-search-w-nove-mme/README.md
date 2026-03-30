@@ -97,7 +97,17 @@ Here is how you can deploy the solution and try it yourself.
 
 ## Deployment
 
-Infrastructure is managed with AWS CDK (Python). From the `cdk/` directory:
+Infrastructure is managed with AWS CDK (Python). **Docker must be running** before you deploy — CDK builds a Docker image for the shot segmentation Lambda container.
+
+**Step 1 — Create the S3 Vectors bucket** (not yet supported by CloudFormation). This must be done before `cdk deploy` because the bootstrap process creates per-project vector indices and triggers the Meridian video ingestion pipeline, both of which require the bucket to exist:
+
+```python
+import boto3
+s3vectors = boto3.client('s3vectors', region_name='us-east-1')
+s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUNT_ID>')
+```
+
+**Step 2 — Deploy with CDK** from the `cdk/` directory:
 
 ```bash
 cd cdk
@@ -113,14 +123,6 @@ cdk deploy
 ```
 
 CDK deploys all infrastructure (OpenSearch, Step Functions, Lambda functions, API Gateway, CloudFront, Cognito, DynamoDB, SQS), builds the Docker image for the pipeline Lambda, packages API Lambda functions, and deploys the static frontend.
-
-**After first deploy**, create an S3 Vectors bucket manually (not yet supported by CloudFormation):
-
-```python
-import boto3
-s3vectors = boto3.client('s3vectors', region_name='us-east-1')
-s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUNT_ID>')
-```
 
 ### What Happens on Deploy
 
