@@ -117,3 +117,18 @@ Entity embeddings always use S3 Vectors regardless of project setting.
 - Security headers (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy) are served by CloudFront ResponseHeadersPolicy in `cdn.py`
 - Auth tokens stored in localStorage; logout calls Cognito `GlobalSignOut` to revoke server-side
 - API Gateway CORS restricted to CloudFront domain (not wildcard); per-method throttling on search (10/s) and upload (5/s)
+
+## Distillation Sub-Project (`../optimized-video-seach-intent-w-bedrock-model-distillations/`)
+
+Standalone notebook workflow (no CDK, no Lambda). Distills Nova Premier → Nova Micro for query weight prediction. Connected to the main stack **only** via a model ARN string: set per-project `analyzer_model` field (PUT `/api/projects/{id}`) or stack-wide default (`cdk deploy -c nova_analyzer_model_id=arn:...`). The teacher prompt in `generate_training_data.py` and the production prompt in `prompt_analyzer.py` are similar but not identical — keep them aligned when editing either.
+Test with: `cd ../optimized-video-seach-intent-w-bedrock-model-distillations && python generate_training_data.py --mode test`
+
+## Vector Engine Behavior by Phase
+
+- **Ingestion**: Identical for both engines. S3 Vectors is always the staging store. Merge Lambda reads from S3V and bulk-indexes to OpenSearch for both.
+- **Search**: The hybrid BM25 + kNN query is engine-agnostic (OpenSearch handles s3vector delegation transparently). The **only** code branch on `vector_engine` during search is in `_entity_rerank()` (`search_engine.py:168-180`): nmslib reads visual vectors from OpenSearch `_source`, s3_vectors makes a separate `s3v.get_vectors()` call.
+- **Creation/Deletion**: Both engines always create/delete 4 S3 Vectors indices. The OpenSearch index schema (`_index_settings`) is the only creation-time difference.
+
+## README Review Notes
+
+`README-review-notes.md` at repo root contains a detailed architecture review with a vector engine divergence table (code snippets included). Consult it when verifying README accuracy or understanding engine-specific behavior.

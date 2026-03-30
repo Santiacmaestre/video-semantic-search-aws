@@ -34,7 +34,7 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 
 ### Ingestion Workflow
 
-1. **Upload** — Users upload video content through the browser. Files are stored in Amazon S3, which triggers the AWS Step Functions orchestrator.
+1. **Upload** — Users upload video content through the browser. Files are stored in Amazon S3, which triggers the Orchestrator Lambda. The orchestrator reads video metadata from DynamoDB, updates the video status to "processing", and starts the AWS Step Functions pipeline.
 2. **Shot Segmentation** — The orchestrator invokes a Lambda function that downloads the video from S3 and uses FFmpeg scene detection to split it into semantically coherent segments (shots).
 3. **Parallel Processing** — Three branches execute concurrently for each segment:
    - **Generate Embeddings** — Amazon Nova Multi-Modal Embeddings (MME) generates 1024-dimensional vectors for visual and audio modalities, stored immediately in Amazon S3 Vectors.
@@ -49,7 +49,7 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 7. **Authentication & Access** — Users authenticate via Amazon Cognito and access the application through Amazon CloudFront, which serves the static frontend.
 8. **Hybrid Search** — The search request passes through API Gateway to the Search Lambda, which executes a hybrid query combining BM25 text matching (people, captions, titles) with per-modality kNN vector search against Amazon OpenSearch Service and Amazon S3 Vectors (acting as an external vector engine for OpenSearch). DynamoDB is queried for project and video metadata. The following two sub-steps run in parallel before the hybrid query is constructed:
    - **9. Query Weight Analysis** — Amazon Bedrock (Anthropic Claude Haiku) analyzes the query intent and assigns relevance weights (0.0–1.0) across four modalities: visual, audio, transcription, and metadata. These weights determine how much each signal contributes to the final ranking.
-   - **10. Query Embedding** — The search query text is embedded via Amazon Nova MME to generate vectors for kNN similarity search. OpenSearch fuses the BM25 and kNN scores using weighted min-max normalization based on the weights from step 9.
+   - **10. Query Embedding** — The search query text is embedded three times concurrently via Amazon Nova MME — once each for visual (`GENERIC_RETRIEVAL`), audio (`GENERIC_RETRIEVAL`), and transcription (`TEXT_RETRIEVAL`) purposes — to generate per-modality vectors for kNN similarity search. OpenSearch fuses the BM25 and kNN scores using weighted min-max normalization based on the weights from step 9.
 
 ## Performance Results
 
