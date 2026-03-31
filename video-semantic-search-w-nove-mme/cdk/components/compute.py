@@ -2,7 +2,6 @@ import os
 from constructs import Construct
 from aws_cdk import (
     Duration,
-    Size,
     aws_lambda as lambda_,
     aws_iam as iam,
     aws_logs as logs,
@@ -10,7 +9,6 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_sqs as sqs,
     aws_s3_notifications as s3n,
-    aws_ecr_assets as ecr_assets,
     BundlingOptions,
 )
 from config import LAMBDA_RUNTIME, NOVA_MODEL_ID, NOVA_LITE_MODEL_ID, CLAUDE_MODEL_ID
@@ -326,27 +324,6 @@ class ComputeConstruct(Construct):
                 "SEGMENTS_TABLE": segments_table.table_name,
                 "PROJECTS_TABLE": projects_table.table_name,
                 "S3_VECTOR_BUCKET": vector_bucket_name,
-                "S3_VIDEO_BUCKET": videos_bucket.bucket_name,
-            },
-        )
-
-        # --- Docker-based Lambda (shot segmentation) ---
-        self.shot_segmentation_fn = lambda_.DockerImageFunction(
-            self, "ShotSegmentationFunction",
-
-            code=lambda_.DockerImageCode.from_image_asset(
-                directory=PROJECT_ROOT,
-                file="deployment/Dockerfile",
-                cmd=["shot_segmentation_function.lambda_handler"],
-                platform=ecr_assets.Platform.LINUX_AMD64,
-                exclude=["cdk", "cdk.out", ".venv", "terraform", ".terraform", "node_modules", ".git"],
-            ),
-            role=self.lambda_role,
-            memory_size=1024,
-            timeout=Duration.seconds(900),
-            log_retention=logs.RetentionDays.TWO_WEEKS,
-            ephemeral_storage_size=Size.gibibytes(10),
-            environment={
                 "S3_VIDEO_BUCKET": videos_bucket.bucket_name,
             },
         )
