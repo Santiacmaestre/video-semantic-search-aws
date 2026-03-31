@@ -161,6 +161,9 @@ class VideoSearchStack(Stack):
         compute.add_state_machine_permissions(processing.state_machine.state_machine_arn)
         compute.set_state_machine_arn(processing.state_machine.state_machine_arn)
 
+        # 11b. Grant Step Functions permission to run Fargate tasks
+        container.grant_state_machine(processing.state_machine.role)
+
         # 12. API (needs Lambda functions + Cognito)
         api = ApiConstruct(
             self, "Api",
