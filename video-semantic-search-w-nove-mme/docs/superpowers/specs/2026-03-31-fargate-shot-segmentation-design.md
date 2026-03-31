@@ -35,7 +35,7 @@ S3 Upload -> Orchestrator -> EcsRunTask (Fargate shot segmentation, .sync)
 
 ### Docker Image Changes
 
-1. **Change base image** from `public.ecr.aws/lambda/python:3.11` to `python:3.11-slim`. The image no longer serves as a Lambda runtime.
+1. **Change base image** from `public.ecr.aws/lambda/python:3.11` to `python:3.13-slim` (matching project's Python 3.13 runtime). The image no longer serves as a Lambda runtime.
 
 2. **Add `entrypoint.py`** in `deployment/`:
    - Reads JSON input from `TASK_INPUT` environment variable (passed via Step Functions container overrides)
@@ -96,10 +96,10 @@ S3 Upload -> Orchestrator -> EcsRunTask (Fargate shot segmentation, .sync)
 
 | File | Change |
 |------|--------|
-| `deployment/Dockerfile` | New base image (`python:3.11-slim`), new entrypoint, remove Lambda runtime adapter |
+| `deployment/Dockerfile` | New base image (`python:3.13-slim`), new entrypoint, remove Lambda runtime adapter |
 | `lambda/functions/shot_segmentation_function.py` | Extract core logic into importable function |
 | `cdk/components/processing.py` | Replace Lambda invoke with EcsRunTask + ReadSegmentationResult states |
-| `cdk/components/compute.py` | Remove shot_segmentation Docker Lambda, add celebrity_detection and caption as zip Lambdas, add ReadSegmentationResult Lambda |
+| `cdk/components/compute.py` | Remove shot_segmentation Docker Lambda, add celebrity_detection and caption as zip Lambdas |
 | `cdk/stacks/video_search_stack.py` | Wire in new ContainerConstruct, pass references between constructs |
 
 ## Cost Estimate
