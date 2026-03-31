@@ -1,6 +1,8 @@
 from constructs import Construct
 from aws_cdk import (
     Duration,
+    aws_ec2 as ec2,
+    aws_ecs as ecs,
     aws_stepfunctions as sfn,
     aws_stepfunctions_tasks as tasks,
     aws_lambda as lambda_,
@@ -14,7 +16,12 @@ class ProcessingConstruct(Construct):
         scope: Construct,
         id: str,
         project_name: str,
-        shot_segmentation_fn: lambda_.IFunction,
+        cluster: ecs.ICluster,
+        task_definition: ecs.FargateTaskDefinition,
+        container: ecs.ContainerDefinition,
+        subnets: ec2.SubnetSelection,
+        security_group: ec2.ISecurityGroup,
+        read_result_fn: lambda_.IFunction,
         embedding_fn: lambda_.IFunction,
         transcription_fn: lambda_.IFunction,
         celebrity_detection_fn: lambda_.IFunction,
@@ -25,18 +32,47 @@ class ProcessingConstruct(Construct):
 
         # --- State definitions ---
 
-        shot_segmentation = tasks.LambdaInvoke(
+        # Fargate shot segmentation (replaces Lambda)
+        shot_segmentation = tasks.EcsRunTask(
             self, "ShotSegmentation",
-            lambda_function=shot_segmentation_fn,
-            result_path="$.shot_result",
-            payload_response_only=True,
-            retry_on_service_exceptions=False,
+            integration_pattern=sfn.IntegrationPattern.RUN_JOB,
+            cluster=cluster,
+            task_definition=task_definition,
+            launch_target=tasks.EcsFargateLaunchTarget(
+                platform_version=ecs.FargatePlatformVersion.LATEST,
+            ),
+            container_overrides=[
+                tasks.ContainerOverride(
+                    container_definition=container,
+                    environment=[
+                        tasks.TaskEnvironmentVariable(
+                            name="TASK_INPUT",
+                            value=sfn.JsonPath.json_to_string(
+                                sfn.JsonPath.object_at("$")
+                            ),
+                        ),
+                    ],
+                ),
+            ],
+            subnets=subnets,
+            security_groups=[security_group],
+            assign_public_ip=True,
+            result_path=sfn.JsonPath.DISCARD,
+            timeout=Duration.seconds(3600),
         )
         shot_segmentation.add_retry(
             errors=["States.ALL"],
             interval=Duration.seconds(10),
             max_attempts=2,
             backoff_rate=2,
+        )
+
+        # Bridge: read Fargate result from S3
+        read_segmentation_result = tasks.LambdaInvoke(
+            self, "ReadSegmentationResult",
+            lambda_function=read_result_fn,
+            result_path="$.shot_result",
+            payload_response_only=True,
         )
 
         prepare_parallel = sfn.Pass(
@@ -197,6 +233,7 @@ class ProcessingConstruct(Construct):
         # --- Chain ---
         definition = (
             shot_segmentation
+            .next(read_segmentation_result)
             .next(prepare_parallel)
             .next(parallel)
             .next(prepare_caption)
