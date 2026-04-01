@@ -35,7 +35,7 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 ### Ingestion Workflow
 
 1. **Upload** — Users upload video content through the browser. Files are stored in Amazon S3, which triggers the Orchestrator Lambda. The orchestrator reads video metadata from DynamoDB, updates the video status to "processing", and starts the AWS Step Functions pipeline.
-2. **Shot Segmentation** — The orchestrator invokes a Lambda function that downloads the video from S3 and uses FFmpeg scene detection to split it into semantically coherent segments (shots).
+2. **Shot Segmentation** — The orchestrator starts an AWS Fargate task (via Step Functions EcsRunTask) that downloads the video from S3 and uses FFmpeg scene detection to split it into semantically coherent segments (shots). Running on Fargate (2 vCPU, 8GB RAM, 30GB ephemeral storage) instead of Lambda removes the 15-minute timeout constraint, supporting videos up to 4-6 hours long.
 3. **Parallel Processing** — Three branches execute concurrently for each segment:
    - **Generate Embeddings** — Amazon Nova Multi-Modal Embeddings (MME) generates 1024-dimensional vectors for visual and audio modalities, stored immediately in Amazon S3 Vectors.
    - **Generate Transcription** — Amazon Transcribe converts the full video's speech to text. The transcript is aligned to segment boundaries, and per-segment text embeddings are generated via Nova MME and stored in S3 Vectors.
@@ -92,12 +92,12 @@ Here is how you can deploy the solution and try it yourself.
 - [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) configured with a named profile
 - [Node.js](https://nodejs.org/) ≥ 18 (for AWS CDK CLI)
 - [AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html) v2 (`npm install -g aws-cdk`)
-- [Docker](https://docs.docker.com/get-docker/) (for building the pipeline Lambda container)
+- [Docker](https://docs.docker.com/get-docker/) (for building the Fargate container image)
 - Python 3.13+ (Lambda runtime; CDK works with 3.11+)
 
 ## Deployment
 
-Infrastructure is managed with AWS CDK (Python). **Docker must be running** before you deploy — CDK builds a Docker image for the shot segmentation Lambda container.
+Infrastructure is managed with AWS CDK (Python). **Docker must be running** before you deploy — CDK builds a Docker image for the Fargate shot segmentation container.
 
 **Step 1 — Create the S3 Vectors bucket** (not yet supported by CloudFormation). This must be done before `cdk deploy` because the bootstrap process creates per-project vector indices and triggers the Meridian video ingestion pipeline, both of which require the bucket to exist:
 
@@ -122,7 +122,7 @@ cdk diff
 cdk deploy
 ```
 
-CDK deploys all infrastructure (OpenSearch, Step Functions, Lambda functions, API Gateway, CloudFront, Cognito, DynamoDB, SQS), builds the Docker image for the pipeline Lambda, packages API Lambda functions, and deploys the static frontend.
+CDK deploys all infrastructure (OpenSearch, Step Functions, Lambda functions, ECS Fargate cluster, API Gateway, CloudFront, Cognito, DynamoDB, SQS), builds the Docker image for the Fargate shot segmentation container, packages API Lambda functions, and deploys the static frontend.
 
 ### What Happens on Deploy
 
@@ -608,7 +608,8 @@ The vector engine is set at project creation and cannot be changed after (the Op
 
 ```
 ├── lambda/functions/            # Lambda handlers
-│   ├── shot_segmentation_function.py  # FFmpeg scene detection + clip extraction
+│   ├── shot_segmentation_function.py  # FFmpeg scene detection + clip extraction (core logic)
+│   ├── read_segmentation_result_function.py  # Bridge Lambda: reads Fargate output from S3
 │   ├── embedding_function.py          # Nova MME video embeddings (visual + audio)
 │   ├── transcription_function.py      # AWS Transcribe → per-segment text
 │   ├── caption_function.py            # Nova Lite captions + genre classification
@@ -628,9 +629,9 @@ The vector engine is set at project creation and cannot be changed after (the Op
 │   └── dynamodb_store.py              # DynamoDB operations
 ├── cdk/                         # AWS CDK infrastructure (Python)
 │   ├── stacks/                        # Main stack definition
-│   └── components/                    # Modular constructs (storage, compute, search, etc.)
+│   └── components/                    # Modular constructs (storage, compute, container, search, etc.)
 ├── frontend-static/             # Vanilla JS SPA (no build step)
-└── deployment/                  # Dockerfile for pipeline Lambda container
+└── deployment/                  # Dockerfile + entrypoint for Fargate shot segmentation container
 ```
 
 ## AWS Services Used
@@ -641,7 +642,8 @@ The vector engine is set at project creation and cannot be changed after (the Op
 | **Amazon OpenSearch** | Hybrid BM25 + kNN search with configurable vector engine (S3 Vectors or nmslib HNSW) |
 | **Amazon S3 Vectors** | Per-project vector storage and staging (visual, audio, transcription, entity indices) |
 | **AWS Step Functions** | Video processing pipeline with parallel branches |
-| **AWS Lambda** | 10 functions (API + pipeline), Docker container for ffmpeg |
+| **AWS Lambda** | 11 functions (API + pipeline) |
+| **Amazon ECS (Fargate)** | Shot segmentation container (ffmpeg, 2 vCPU/8GB RAM/30GB ephemeral) |
 | **Amazon Rekognition** | Celebrity detection |
 | **Amazon Transcribe** | Speech-to-text with word-level timestamps |
 | **Amazon DynamoDB** | Projects, videos, segments metadata |
