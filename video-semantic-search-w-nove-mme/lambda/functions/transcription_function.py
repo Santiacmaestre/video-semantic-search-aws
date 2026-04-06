@@ -1,12 +1,14 @@
 """Transcription Lambda — AWS Transcribe with sentence-aware segment alignment."""
 import json
 import os
+import random
 import sys
 import uuid
 import time
 sys.path.insert(0, '/opt/python')
 
 import boto3
+from botocore.exceptions import ClientError
 
 aws_region = os.environ.get('AWS_REGION', 'us-east-1')
 transcribe_client = boto3.client('transcribe', region_name=aws_region)
@@ -171,6 +173,22 @@ def _align_to_segments(words, segments, overlap=2.0, max_extend_words=20):
     return result
 
 
+def _bedrock_invoke_with_retry(client, max_retries=3, **kwargs):
+    """invoke_model with exponential backoff for throttling/transient errors."""
+    for attempt in range(max_retries + 1):
+        try:
+            return client.invoke_model(**kwargs)
+        except ClientError as e:
+            code = e.response['Error']['Code']
+            if code in ('ThrottlingException', 'TooManyRequestsException',
+                        'ServiceUnavailableException', 'ModelTimeoutException') and attempt < max_retries:
+                delay = min(2 ** attempt + random.uniform(0, 1), 30)
+                print(f"Bedrock retry {attempt+1}/{max_retries} after {delay:.1f}s: {code}")
+                time.sleep(delay)
+            else:
+                raise
+
+
 def _nova_text_embedding(text):
     request_body = {
         'taskType': 'SINGLE_EMBEDDING',
@@ -180,7 +198,7 @@ def _nova_text_embedding(text):
             'text': {'truncationMode': 'END', 'value': text}
         }
     }
-    response = bedrock_runtime.invoke_model(
+    response = _bedrock_invoke_with_retry(bedrock_runtime,
         body=json.dumps(request_body), modelId=NOVA_MODEL_ID,
         accept='application/json', contentType='application/json'
     )

@@ -2,8 +2,10 @@
 import boto3
 import json
 import os
+import random
 import time
 from typing import List, Dict
+from botocore.exceptions import ClientError
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -17,6 +19,22 @@ s3_client = boto3.client('s3', region_name=aws_region)
 NOVA_MODEL_ID = 'amazon.nova-2-multimodal-embeddings-v1:0'
 NOVA_DIMENSION = 1024
 SEGMENT_DURATION = 10
+
+
+def _bedrock_invoke_with_retry(client, max_retries=3, **kwargs):
+    """invoke_model with exponential backoff for throttling/transient errors."""
+    for attempt in range(max_retries + 1):
+        try:
+            return client.invoke_model(**kwargs)
+        except ClientError as e:
+            code = e.response['Error']['Code']
+            if code in ('ThrottlingException', 'TooManyRequestsException',
+                        'ServiceUnavailableException', 'ModelTimeoutException') and attempt < max_retries:
+                delay = min(2 ** attempt + random.uniform(0, 1), 30)
+                print(f"Bedrock retry {attempt+1}/{max_retries} after {delay:.1f}s: {code}")
+                time.sleep(delay)
+            else:
+                raise
 
 
 def generate_video_embeddings_nova(s3_uri: str, segment_duration: int = SEGMENT_DURATION) -> List[Dict]:
@@ -117,7 +135,7 @@ def generate_text_embedding_nova(text: str, purpose: str = 'GENERIC_RETRIEVAL') 
         }
     }
 
-    response = bedrock_runtime.invoke_model(
+    response = _bedrock_invoke_with_retry(bedrock_runtime,
         body=json.dumps(request_body),
         modelId=NOVA_MODEL_ID,
         accept='application/json',
@@ -159,7 +177,7 @@ def generate_image_embedding_nova(s3_uri: str, purpose: str = 'GENERIC_INDEX') -
         }
     }
 
-    response = bedrock_runtime.invoke_model(
+    response = _bedrock_invoke_with_retry(bedrock_runtime,
         body=json.dumps(request_body),
         modelId=NOVA_MODEL_ID,
         accept='application/json',

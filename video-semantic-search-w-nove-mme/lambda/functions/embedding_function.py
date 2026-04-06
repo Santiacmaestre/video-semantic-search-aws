@@ -9,7 +9,10 @@ import sys
 sys.path.insert(0, '/opt/python')
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
+import time
 import boto3
+from botocore.exceptions import ClientError
 
 aws_region = os.environ.get('AWS_REGION', 'us-east-1')
 bedrock = boto3.client('bedrock-runtime', region_name=aws_region)
@@ -82,9 +85,25 @@ def lambda_handler(event, context):
     }
 
 
+def _bedrock_invoke_with_retry(client, max_retries=3, **kwargs):
+    """invoke_model with exponential backoff for throttling/transient errors."""
+    for attempt in range(max_retries + 1):
+        try:
+            return client.invoke_model(**kwargs)
+        except ClientError as e:
+            code = e.response['Error']['Code']
+            if code in ('ThrottlingException', 'TooManyRequestsException',
+                        'ServiceUnavailableException', 'ModelTimeoutException') and attempt < max_retries:
+                delay = min(2 ** attempt + random.uniform(0, 1), 30)
+                print(f"Bedrock retry {attempt+1}/{max_retries} after {delay:.1f}s: {code}")
+                time.sleep(delay)
+            else:
+                raise
+
+
 def _embed_clip(clip_uri, video_format='mp4'):
     """Call Nova MME sync API for a single clip, returning visual and audio embeddings."""
-    response = bedrock.invoke_model(
+    response = _bedrock_invoke_with_retry(bedrock,
         modelId=NOVA_MODEL_ID,
         body=json.dumps({
             'taskType': 'SINGLE_EMBEDDING',

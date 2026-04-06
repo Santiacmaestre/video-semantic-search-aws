@@ -138,7 +138,7 @@ class ProcessingConstruct(Construct):
             lambda_function=celebrity_detection_fn,
             result_path="$.result",
             payload_response_only=True,
-            timeout=Duration.seconds(600),
+            timeout=Duration.seconds(900),
             retry_on_service_exceptions=False,
         )
         celebrity_detection.add_retry(

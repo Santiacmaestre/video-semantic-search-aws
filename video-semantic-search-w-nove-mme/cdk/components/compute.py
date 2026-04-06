@@ -269,7 +269,7 @@ class ComputeConstruct(Construct):
 
         self.orchestrator_fn = _make_zip_lambda(
             "OrchestratorFunction", "orchestrator_function.lambda_handler",
-            memory=256, timeout_secs=30, log_retention_days=14,
+            memory=2048, timeout_secs=900, log_retention_days=14,
             environment={
                 "VIDEOS_TABLE": videos_table.table_name,
                 "PROJECTS_TABLE": projects_table.table_name,
@@ -280,7 +280,7 @@ class ComputeConstruct(Construct):
 
         self.embedding_fn = _make_zip_lambda(
             "EmbeddingFunction", "embedding_function.lambda_handler",
-            timeout_secs=900, log_retention_days=14, use_layer=True,
+            memory=2048, timeout_secs=900, log_retention_days=14, use_layer=True,
             environment={
                 "S3_VIDEO_BUCKET": videos_bucket.bucket_name,
                 "S3_VECTOR_BUCKET": vector_bucket_name,
@@ -291,7 +291,7 @@ class ComputeConstruct(Construct):
 
         self.transcription_fn = _make_zip_lambda(
             "TranscriptionFunction", "transcription_function.lambda_handler",
-            timeout_secs=900, log_retention_days=14, use_layer=True,
+            memory=2048, timeout_secs=900, log_retention_days=14, use_layer=True,
             environment={
                 "S3_VIDEO_BUCKET": videos_bucket.bucket_name,
                 "S3_VECTOR_BUCKET": vector_bucket_name,
@@ -301,7 +301,7 @@ class ComputeConstruct(Construct):
 
         self.celebrity_detection_fn = _make_zip_lambda(
             "CelebrityDetectionFunction", "celebrity_detection_function.lambda_handler",
-            memory=256, timeout_secs=600, log_retention_days=14,
+            memory=2048, timeout_secs=900, log_retention_days=14,
             environment={
                 "S3_VIDEO_BUCKET": videos_bucket.bucket_name,
             },
@@ -309,7 +309,7 @@ class ComputeConstruct(Construct):
 
         self.caption_fn = _make_zip_lambda(
             "CaptionFunction", "caption_function.handler",
-            timeout_secs=900, log_retention_days=14,
+            memory=2048, timeout_secs=900, log_retention_days=14,
             environment={
                 "S3_VIDEO_BUCKET": videos_bucket.bucket_name,
                 "NOVA_LITE_MODEL_ID": NOVA_LITE_MODEL_ID,
@@ -318,7 +318,7 @@ class ComputeConstruct(Construct):
 
         self.merge_fn = _make_zip_lambda(
             "MergeFunction", "merge_function.lambda_handler",
-            timeout_secs=120, log_retention_days=14, use_layer=True,
+            memory=2048, timeout_secs=900, log_retention_days=14, use_layer=True,
             environment={
                 "VIDEOS_TABLE": videos_table.table_name,
                 "SEGMENTS_TABLE": segments_table.table_name,
