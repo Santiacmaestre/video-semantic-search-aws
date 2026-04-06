@@ -58,7 +58,7 @@ class ProcessingConstruct(Construct):
             security_groups=[security_group],
             assign_public_ip=True,
             result_path=sfn.JsonPath.DISCARD,
-            timeout=Duration.seconds(3600),
+            timeout=Duration.seconds(21600),
         )
         shot_segmentation.add_retry(
             errors=["States.ALL"],
@@ -85,7 +85,7 @@ class ProcessingConstruct(Construct):
                 "embedding_model.$": "$.embedding_model",
                 "metadata_model.$": "$.metadata_model",
                 "segment_duration.$": "$.segment_duration",
-                "shot_segments.$": "$.shot_result.segments",
+                "segments_s3_key.$": "$.shot_result.segments_s3_key",
             },
         )
 
@@ -191,7 +191,7 @@ class ProcessingConstruct(Construct):
             input_path="$.caption_input",
             result_path="$.caption_result",
             payload_response_only=True,
-            timeout=Duration.seconds(600),
+            timeout=Duration.seconds(900),
             retry_on_service_exceptions=False,
         )
         generate_captions.add_retry(

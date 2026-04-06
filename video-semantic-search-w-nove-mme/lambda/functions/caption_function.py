@@ -7,6 +7,7 @@ displayed in search results AND indexed in OpenSearch for BM25 text search.
 import boto3
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 bedrock = boto3.client('bedrock-runtime', region_name=os.getenv('AWS_REGION', 'us-east-1'))
 s3 = boto3.client('s3', region_name=os.getenv('AWS_REGION', 'us-east-1'))
@@ -45,16 +46,29 @@ def handler(event, context):
     clip_objs = s3.list_objects_v2(Bucket=bucket, Prefix=f"clips/{video_id}/").get('Contents', [])
     clip_keys = sorted([o['Key'] for o in clip_objs if o['Key'].endswith('.mp4')])
 
-    # Build transcription lookup: segment_index → text
-    tx_map = {t['segment_index']: t['text'] for t in transcription_result.get('transcripts', [])}
+    # Load transcripts from S3 (avoids Step Functions payload limit)
+    transcripts = transcription_result.get('transcripts', [])
+    if transcription_result.get('transcripts_s3_key'):
+        try:
+            obj = s3.get_object(Bucket=bucket, Key=transcription_result['transcripts_s3_key'])
+            transcripts = json.loads(obj['Body'].read())
+        except Exception as e:
+            print(f"Error loading transcripts from S3: {e}")
+    tx_map = {t['segment_index']: t['text'] for t in transcripts}
 
-    # Generate per-segment captions
-    captions = []
-    for key in clip_keys:
+    # Generate per-segment captions in parallel
+    def _caption_segment(key):
         idx = int(key.split('/')[-1].replace('seg_', '').replace('.mp4', ''))
         clip_uri = f"s3://{bucket}/{key}"
         caption = _generate_caption(clip_uri, tx_map.get(idx, ''))
-        captions.append({'segment_index': idx, 'caption': caption})
+        return {'segment_index': idx, 'caption': caption}
+
+    captions = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(_caption_segment, key): key for key in clip_keys}
+        for future in as_completed(futures):
+            captions.append(future.result())
+    captions.sort(key=lambda c: c['segment_index'])
 
     # Classify genre from all captions combined
     all_text = '\n'.join(f"- {c['caption']}" for c in captions if c['caption'])

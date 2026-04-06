@@ -15,4 +15,8 @@ def lambda_handler(event, context):
     result = json.loads(resp['Body'].read())
 
     print(f"Read segmentation result: {len(result['segments'])} segments, {result['video_duration']}s")
-    return result
+    return {
+        'segments_s3_key': result_key,
+        'segment_count': len(result['segments']),
+        'video_duration': result['video_duration'],
+    }

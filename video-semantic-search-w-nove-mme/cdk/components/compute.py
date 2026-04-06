@@ -309,7 +309,7 @@ class ComputeConstruct(Construct):
 
         self.caption_fn = _make_zip_lambda(
             "CaptionFunction", "caption_function.handler",
-            timeout_secs=600, log_retention_days=14,
+            timeout_secs=900, log_retention_days=14,
             environment={
                 "S3_VIDEO_BUCKET": videos_bucket.bucket_name,
                 "NOVA_LITE_MODEL_ID": NOVA_LITE_MODEL_ID,

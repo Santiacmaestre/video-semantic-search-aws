@@ -26,7 +26,14 @@ def lambda_handler(event, context):
     video_id = event['video_id']
     s3_uri = event['s3_uri']
     project_id = event.get('project_id', '')
-    shot_segments = event.get('shot_segments', [])
+
+    # Load segments from S3 (avoids Step Functions payload limit)
+    segments_s3_key = event.get('segments_s3_key', '')
+    if segments_s3_key:
+        obj = s3_client.get_object(Bucket=S3_VIDEO_BUCKET, Key=segments_s3_key)
+        shot_segments = json.loads(obj['Body'].read()).get('segments', [])
+    else:
+        shot_segments = event.get('shot_segments', [])
 
     # Run Transcribe
     words = _transcribe(s3_uri)
@@ -67,7 +74,13 @@ def lambda_handler(event, context):
             print(f"Error storing transcript embedding seg {t['segment_index']}: {e}")
 
     print(f"Transcribed {len(transcripts)} segments from {len(words)} words")
-    return {'transcripts': [{'segment_index': t['segment_index'], 'text': t['text']} for t in transcripts]}
+
+    # Write transcripts to S3 (avoids Step Functions payload limit)
+    transcripts_data = [{'segment_index': t['segment_index'], 'text': t['text']} for t in transcripts]
+    transcripts_key = f"metadata/{video_id}/transcripts.json"
+    s3_client.put_object(Bucket=S3_VIDEO_BUCKET, Key=transcripts_key, Body=json.dumps(transcripts_data), ContentType='application/json')
+
+    return {'transcripts_s3_key': transcripts_key, 'transcript_count': len(transcripts)}
 
 
 def _transcribe(s3_uri):

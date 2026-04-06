@@ -46,9 +46,25 @@ def lambda_handler(event, context):
     celebrity_result = event.get('celebrity_result', {})
     caption_result = event.get('caption_result', {})
 
-    segments = embedding_result.get('segments', [])
-    celebrities = celebrity_result.get('celebrities', [])
     genre = caption_result.get('genre', '')
+
+    # Load embedding segments from S3 (avoids Step Functions payload limit)
+    segments = embedding_result.get('segments', [])
+    if embedding_result.get('segments_s3_key'):
+        try:
+            obj = s3.get_object(Bucket=S3_VIDEO_BUCKET, Key=embedding_result['segments_s3_key'])
+            segments = json.loads(obj['Body'].read())
+        except Exception as e:
+            print(f"Error loading embedding segments from S3: {e}")
+
+    # Load celebrities from S3 (avoids Step Functions payload limit)
+    celebrities = celebrity_result.get('celebrities', [])
+    if celebrity_result.get('celebrities_s3_key'):
+        try:
+            obj = s3.get_object(Bucket=S3_VIDEO_BUCKET, Key=celebrity_result['celebrities_s3_key'])
+            celebrities = json.loads(obj['Body'].read())
+        except Exception as e:
+            print(f"Error loading celebrities from S3: {e}")
 
     # Load captions from S3 (avoids Step Functions payload limit)
     captions = []
@@ -59,7 +75,14 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"Error loading captions from S3: {e}")
 
+    # Load transcripts from S3 (avoids Step Functions payload limit)
     transcripts = transcription_result.get('transcripts', [])
+    if transcription_result.get('transcripts_s3_key'):
+        try:
+            obj = s3.get_object(Bucket=S3_VIDEO_BUCKET, Key=transcription_result['transcripts_s3_key'])
+            transcripts = json.loads(obj['Body'].read())
+        except Exception as e:
+            print(f"Error loading transcripts from S3: {e}")
 
     # Store segment metadata in DynamoDB
     seg_table = dynamodb.Table(SEGMENTS_TABLE)
