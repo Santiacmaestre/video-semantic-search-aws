@@ -2,7 +2,10 @@
 import boto3
 import json
 import os
+import random
+import time
 from typing import Dict
+from botocore.exceptions import ClientError
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -13,6 +16,23 @@ bedrock_client = boto3.client('bedrock-runtime', region_name=os.getenv('AWS_REGI
 DEFAULT_MODEL_ID = os.getenv('NOVA_ANALYZER_MODEL_ID') or os.getenv('CLAUDE_MODEL_ID')
 
 _weight_cache = {}
+
+
+def _bedrock_converse_with_retry(client, max_retries=3, **kwargs):
+    """converse() with exponential backoff for throttling/transient errors."""
+    for attempt in range(max_retries + 1):
+        try:
+            return client.converse(**kwargs)
+        except ClientError as e:
+            code = e.response['Error']['Code']
+            if code in ('ThrottlingException', 'TooManyRequestsException',
+                        'ServiceUnavailableException', 'ModelTimeoutException') and attempt < max_retries:
+                delay = min(2 ** attempt + random.uniform(0, 1), 30)
+                print(f"Bedrock retry {attempt+1}/{max_retries} after {delay:.1f}s: {code}")
+                time.sleep(delay)
+            else:
+                raise
+
 
 SYSTEM_MESSAGE = """Analyze video search queries and assign weights (0.0-1.0) for four modalities.
 Weights must sum to 1.0.
@@ -57,7 +77,7 @@ def analyze_query_weights(query_text: str, analyzer_model_id: str = None) -> Dic
 
     def try_parse_weights(attempt=1):
         try:
-            response = bedrock_client.converse(
+            response = _bedrock_converse_with_retry(bedrock_client,
                 modelId=model_id,
                 messages=[{"role": "user", "content": [{"text": query_text}]}],
                 system=[{"text": SYSTEM_MESSAGE}],

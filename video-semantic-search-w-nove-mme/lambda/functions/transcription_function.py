@@ -1,12 +1,14 @@
 """Transcription Lambda — AWS Transcribe with sentence-aware segment alignment."""
 import json
 import os
+import random
 import sys
 import uuid
 import time
 sys.path.insert(0, '/opt/python')
 
 import boto3
+from botocore.exceptions import ClientError
 
 aws_region = os.environ.get('AWS_REGION', 'us-east-1')
 transcribe_client = boto3.client('transcribe', region_name=aws_region)
@@ -26,7 +28,14 @@ def lambda_handler(event, context):
     video_id = event['video_id']
     s3_uri = event['s3_uri']
     project_id = event.get('project_id', '')
-    shot_segments = event.get('shot_segments', [])
+
+    # Load segments from S3 (avoids Step Functions payload limit)
+    segments_s3_key = event.get('segments_s3_key', '')
+    if segments_s3_key:
+        obj = s3_client.get_object(Bucket=S3_VIDEO_BUCKET, Key=segments_s3_key)
+        shot_segments = json.loads(obj['Body'].read()).get('segments', [])
+    else:
+        shot_segments = event.get('shot_segments', [])
 
     # Run Transcribe
     words = _transcribe(s3_uri)
@@ -67,7 +76,13 @@ def lambda_handler(event, context):
             print(f"Error storing transcript embedding seg {t['segment_index']}: {e}")
 
     print(f"Transcribed {len(transcripts)} segments from {len(words)} words")
-    return {'transcripts': [{'segment_index': t['segment_index'], 'text': t['text']} for t in transcripts]}
+
+    # Write transcripts to S3 (avoids Step Functions payload limit)
+    transcripts_data = [{'segment_index': t['segment_index'], 'text': t['text']} for t in transcripts]
+    transcripts_key = f"metadata/{video_id}/transcripts.json"
+    s3_client.put_object(Bucket=S3_VIDEO_BUCKET, Key=transcripts_key, Body=json.dumps(transcripts_data), ContentType='application/json')
+
+    return {'transcripts_s3_key': transcripts_key, 'transcript_count': len(transcripts)}
 
 
 def _transcribe(s3_uri):
@@ -158,6 +173,22 @@ def _align_to_segments(words, segments, overlap=2.0, max_extend_words=20):
     return result
 
 
+def _bedrock_invoke_with_retry(client, max_retries=3, **kwargs):
+    """invoke_model with exponential backoff for throttling/transient errors."""
+    for attempt in range(max_retries + 1):
+        try:
+            return client.invoke_model(**kwargs)
+        except ClientError as e:
+            code = e.response['Error']['Code']
+            if code in ('ThrottlingException', 'TooManyRequestsException',
+                        'ServiceUnavailableException', 'ModelTimeoutException') and attempt < max_retries:
+                delay = min(2 ** attempt + random.uniform(0, 1), 30)
+                print(f"Bedrock retry {attempt+1}/{max_retries} after {delay:.1f}s: {code}")
+                time.sleep(delay)
+            else:
+                raise
+
+
 def _nova_text_embedding(text):
     request_body = {
         'taskType': 'SINGLE_EMBEDDING',
@@ -167,7 +198,7 @@ def _nova_text_embedding(text):
             'text': {'truncationMode': 'END', 'value': text}
         }
     }
-    response = bedrock_runtime.invoke_model(
+    response = _bedrock_invoke_with_retry(bedrock_runtime,
         body=json.dumps(request_body), modelId=NOVA_MODEL_ID,
         accept='application/json', contentType='application/json'
     )

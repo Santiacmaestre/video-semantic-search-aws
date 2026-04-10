@@ -19,6 +19,7 @@ def apply_nag_suppressions(stack: Stack) -> None:
     _suppress_cloudfront(stack)
     _suppress_cognito(stack)
     _suppress_step_functions(stack)
+    _suppress_container(stack)
 
 
 def _suppress_cdk_internal(stack: Stack) -> None:
@@ -281,6 +282,56 @@ def _suppress_cognito(stack: Stack) -> None:
             NagPackSuppression(
                 id="AwsSolutions-COG3",
                 reason="Advanced security features (Cognito threat protection) not enabled — adds per-MAU cost not justified for demo project",
+            ),
+        ],
+    )
+
+
+def _suppress_container(stack: Stack) -> None:
+    """Suppress Fargate container findings for dev/demo deployment."""
+    NagSuppressions.add_resource_suppressions_by_path(
+        stack,
+        "/video-search-v2-stack/Container/ProcessingVpc/Resource",
+        [
+            NagPackSuppression(
+                id="AwsSolutions-VPC7",
+                reason="VPC is used only for ephemeral Fargate tasks (shot segmentation) — no persistent workloads, no inbound traffic; flow logs add cost without proportional value for batch processing",
+            ),
+        ],
+    )
+
+    NagSuppressions.add_resource_suppressions_by_path(
+        stack,
+        "/video-search-v2-stack/Container/ProcessingCluster/Resource",
+        [
+            NagPackSuppression(
+                id="AwsSolutions-ECS4",
+                reason="Container Insights not needed for ephemeral batch tasks — CloudWatch Logs on the task provides sufficient observability",
+            ),
+        ],
+    )
+
+    NagSuppressions.add_resource_suppressions_by_path(
+        stack,
+        "/video-search-v2-stack/Container/TaskExecutionRole/Resource",
+        [
+            NagPackSuppression(
+                id="AwsSolutions-IAM4",
+                reason="AmazonECSTaskExecutionRolePolicy is the standard AWS managed policy for ECS task execution (ECR pull + CloudWatch Logs)",
+                applies_to=[
+                    "Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
+                ],
+            ),
+        ],
+    )
+
+    NagSuppressions.add_resource_suppressions_by_path(
+        stack,
+        "/video-search-v2-stack/Container/SegmentationTask/Resource",
+        [
+            NagPackSuppression(
+                id="AwsSolutions-ECS2",
+                reason="S3_VIDEO_BUCKET is a non-sensitive bucket name — using SSM Parameter Store for a public bucket name adds unnecessary complexity",
             ),
         ],
     )

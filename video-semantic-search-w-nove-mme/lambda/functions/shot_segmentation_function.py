@@ -1,4 +1,4 @@
-"""Shot segmentation Lambda — ffmpeg scene detection with smart segment boundaries."""
+"""Shot segmentation — ffmpeg scene detection with smart segment boundaries."""
 import os
 import subprocess
 import tempfile
@@ -11,13 +11,12 @@ SCENE_THRESHOLD = 0.3
 MIN_SEGMENT_SEC = 4
 
 
-def lambda_handler(event, context):
-    video_id = event['video_id']
-    s3_uri = event['s3_uri']
-    target_duration = event.get('segment_duration', 10)
-    max_duration = int(target_duration * 1.5)
-    pre_segments = event.get('segments')  # Pre-defined segments (skip scene detection)
+def run_segmentation(video_id, s3_uri, target_duration=10, pre_segments=None):
+    """Core segmentation logic. Downloads video, detects scenes, extracts clips, uploads to S3.
 
+    Returns dict with 'segments' list and 'video_duration' float.
+    """
+    max_duration = int(target_duration * 1.5)
     bucket, key = s3_uri.replace('s3://', '').split('/', 1)
 
     # Download video
@@ -30,17 +29,14 @@ def lambda_handler(event, context):
         print(f"Video duration: {duration}s")
 
         if pre_segments:
-            # Extract-only mode: segments provided, just extract clips
             segments = pre_segments
             print(f"Extract-only: {len(segments)} pre-defined segments")
         else:
-            # Full mode (Nova MME): scene detection + segment building
             scene_changes = _detect_scenes(video_path)
             print(f"Detected {len(scene_changes)} scene changes")
             segments = _build_smart_segments(scene_changes, duration, target_duration, MIN_SEGMENT_SEC, max_duration)
             print(f"Built {len(segments)} smart segments")
 
-        # Extract clips and upload to S3
         for seg in segments:
             clip_key = f"clips/{video_id}/seg_{seg['segment_index']:04d}.mp4"
             clip_path = f"/tmp/seg_{seg['segment_index']}.mp4"
@@ -58,6 +54,15 @@ def lambda_handler(event, context):
 
     finally:
         os.unlink(video_path)
+
+
+def lambda_handler(event, context):
+    return run_segmentation(
+        video_id=event['video_id'],
+        s3_uri=event['s3_uri'],
+        target_duration=event.get('segment_duration', 10),
+        pre_segments=event.get('segments'),
+    )
 
 
 def _get_duration(video_path):
@@ -92,7 +97,6 @@ def _build_smart_segments(scene_changes, video_duration, target_duration=10, min
     while current_start < video_duration - 1.0:
         ideal_end = current_start + target_duration
 
-        # Find scene changes in acceptable window
         candidates = [t for t in scene_changes
                       if current_start + min_dur <= t <= current_start + max_dur]
 

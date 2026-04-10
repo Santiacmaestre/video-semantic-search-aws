@@ -7,6 +7,10 @@ displayed in search results AND indexed in OpenSearch for BM25 text search.
 import boto3
 import json
 import os
+import random
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from botocore.exceptions import ClientError
 
 bedrock = boto3.client('bedrock-runtime', region_name=os.getenv('AWS_REGION', 'us-east-1'))
 s3 = boto3.client('s3', region_name=os.getenv('AWS_REGION', 'us-east-1'))
@@ -45,16 +49,29 @@ def handler(event, context):
     clip_objs = s3.list_objects_v2(Bucket=bucket, Prefix=f"clips/{video_id}/").get('Contents', [])
     clip_keys = sorted([o['Key'] for o in clip_objs if o['Key'].endswith('.mp4')])
 
-    # Build transcription lookup: segment_index → text
-    tx_map = {t['segment_index']: t['text'] for t in transcription_result.get('transcripts', [])}
+    # Load transcripts from S3 (avoids Step Functions payload limit)
+    transcripts = transcription_result.get('transcripts', [])
+    if transcription_result.get('transcripts_s3_key'):
+        try:
+            obj = s3.get_object(Bucket=bucket, Key=transcription_result['transcripts_s3_key'])
+            transcripts = json.loads(obj['Body'].read())
+        except Exception as e:
+            print(f"Error loading transcripts from S3: {e}")
+    tx_map = {t['segment_index']: t['text'] for t in transcripts}
 
-    # Generate per-segment captions
-    captions = []
-    for key in clip_keys:
+    # Generate per-segment captions in parallel
+    def _caption_segment(key):
         idx = int(key.split('/')[-1].replace('seg_', '').replace('.mp4', ''))
         clip_uri = f"s3://{bucket}/{key}"
         caption = _generate_caption(clip_uri, tx_map.get(idx, ''))
-        captions.append({'segment_index': idx, 'caption': caption})
+        return {'segment_index': idx, 'caption': caption}
+
+    captions = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(_caption_segment, key): key for key in clip_keys}
+        for future in as_completed(futures):
+            captions.append(future.result())
+    captions.sort(key=lambda c: c['segment_index'])
 
     # Classify genre from all captions combined
     all_text = '\n'.join(f"- {c['caption']}" for c in captions if c['caption'])
@@ -67,13 +84,29 @@ def handler(event, context):
     return {'captions_s3_key': captions_key, 'genre': genre, 'caption_count': len(captions)}
 
 
+def _bedrock_invoke_with_retry(client, max_retries=3, **kwargs):
+    """invoke_model with exponential backoff for throttling/transient errors."""
+    for attempt in range(max_retries + 1):
+        try:
+            return client.invoke_model(**kwargs)
+        except ClientError as e:
+            code = e.response['Error']['Code']
+            if code in ('ThrottlingException', 'TooManyRequestsException',
+                        'ServiceUnavailableException', 'ModelTimeoutException') and attempt < max_retries:
+                delay = min(2 ** attempt + random.uniform(0, 1), 30)
+                print(f"Bedrock retry {attempt+1}/{max_retries} after {delay:.1f}s: {code}")
+                time.sleep(delay)
+            else:
+                raise
+
+
 def _generate_caption(clip_s3_uri, transcription=''):
     """Caption a single video clip using Nova Lite with optional transcription context."""
     tx_hint = f'\nTranscription: "{transcription}"' if transcription else ''
     prompt = CAPTION_PROMPT.format(transcription=tx_hint)
 
     try:
-        resp = bedrock.invoke_model(
+        resp = _bedrock_invoke_with_retry(bedrock,
             modelId=NOVA_LITE_MODEL,
             body=json.dumps({
                 'messages': [{'role': 'user', 'content': [
@@ -94,7 +127,7 @@ def _generate_caption(clip_s3_uri, transcription=''):
 def _classify_genre(captions_text):
     """Classify video genre from combined segment captions."""
     try:
-        resp = bedrock.invoke_model(
+        resp = _bedrock_invoke_with_retry(bedrock,
             modelId=NOVA_LITE_MODEL,
             body=json.dumps({
                 'messages': [{'role': 'user', 'content': [{'text': GENRE_PROMPT.format(captions=captions_text)}]}],

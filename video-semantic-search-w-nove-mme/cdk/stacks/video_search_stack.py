@@ -5,6 +5,7 @@ from aws_cdk import (
     Aws,
     CfnOutput,
     aws_cognito as cognito,
+    aws_ec2 as ec2,
     aws_iam as iam,
     aws_s3 as s3,
 )
@@ -12,6 +13,7 @@ from components.storage import StorageConstruct
 from components.auth import AuthConstruct
 from components.cdn import CdnConstruct
 from components.compute import ComputeConstruct
+from components.container import ContainerConstruct
 from components.search import SearchConstruct
 from components.processing import ProcessingConstruct
 from components.api import ApiConstruct
@@ -119,6 +121,14 @@ class VideoSearchStack(Stack):
             vector_bucket_name=storage.vector_bucket_name,
         )
 
+        # 7b. Container (Fargate for shot segmentation)
+        container = ContainerConstruct(
+            self, "Container",
+            project_name=project_name,
+            videos_bucket=storage.videos_bucket,
+            lambda_role=compute.lambda_role,
+        )
+
         # 8. Search (needs lambda role)
         search = SearchConstruct(
             self, "Search",
@@ -134,7 +144,12 @@ class VideoSearchStack(Stack):
         processing = ProcessingConstruct(
             self, "Processing",
             project_name=project_name,
-            shot_segmentation_fn=compute.shot_segmentation_fn,
+            cluster=container.cluster,
+            task_definition=container.task_definition,
+            container=container.container,
+            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+            security_group=container.security_group,
+            read_result_fn=container.read_result_fn,
             embedding_fn=compute.embedding_fn,
             transcription_fn=compute.transcription_fn,
             celebrity_detection_fn=compute.celebrity_detection_fn,
@@ -145,6 +160,9 @@ class VideoSearchStack(Stack):
         # 11. Wire state machine ARN + permissions to orchestrator
         compute.add_state_machine_permissions(processing.state_machine.state_machine_arn)
         compute.set_state_machine_arn(processing.state_machine.state_machine_arn)
+
+        # 11b. Grant Step Functions permission to run Fargate tasks
+        container.grant_state_machine(processing.state_machine.role)
 
         # 12. API (needs Lambda functions + Cognito)
         api = ApiConstruct(

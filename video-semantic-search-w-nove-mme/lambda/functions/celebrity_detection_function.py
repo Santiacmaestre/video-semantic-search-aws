@@ -6,7 +6,10 @@ import os
 import time
 import boto3
 
-rekognition = boto3.client('rekognition', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
+aws_region = os.environ.get('AWS_REGION', 'us-east-1')
+rekognition = boto3.client('rekognition', region_name=aws_region)
+s3 = boto3.client('s3', region_name=aws_region)
+S3_VIDEO_BUCKET = os.environ.get('S3_VIDEO_BUCKET', '')
 
 
 def lambda_handler(event, context):
@@ -76,4 +79,8 @@ def lambda_handler(event, context):
 
     result = list(celebrities.values())
     print(f"Found {len(result)} celebrities with {sum(len(c['timestamps']) for c in result)} total detections")
-    return {'celebrities': result}
+
+    # Write to S3 to avoid Step Functions payload size limit
+    celebrities_key = f"metadata/{video_id}/celebrities.json"
+    s3.put_object(Bucket=S3_VIDEO_BUCKET, Key=celebrities_key, Body=json.dumps(result), ContentType='application/json')
+    return {'celebrities_s3_key': celebrities_key, 'celebrity_count': len(result)}
