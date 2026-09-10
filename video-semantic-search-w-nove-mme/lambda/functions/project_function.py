@@ -15,6 +15,7 @@ PROJECTS_TABLE = os.environ['PROJECTS_TABLE']
 VIDEOS_TABLE = os.environ['VIDEOS_TABLE']
 SEGMENTS_TABLE = os.environ['SEGMENTS_TABLE']
 ENTITIES_TABLE = os.environ['ENTITIES_TABLE']
+DEFAULT_ANALYZER_MODEL = os.environ.get('ANALYZER_MODEL_ID', 'us.amazon.nova-2-lite-v1:0')
 
 CORS = {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'}
 
@@ -71,7 +72,7 @@ def lambda_handler(event, context):
                 'project_id': pid,
                 'user_id': user_id,
                 'name': body.get('name', 'Untitled'),
-                'analyzer_model': body.get('analyzer_model', 'global.anthropic.claude-haiku-4-5-20251001-v1:0'),
+                'analyzer_model': body.get('analyzer_model', DEFAULT_ANALYZER_MODEL),
                 'segment_duration': int(body.get('segment_duration', 10)),
                 'metadata_model': body.get('metadata_model', 'nova-lite'),
                 'vector_engine': body.get('vector_engine', 's3_vectors'),

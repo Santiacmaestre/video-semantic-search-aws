@@ -172,7 +172,7 @@ function showCreateProjectModal() {
                     <label style="font-size:0.85rem;font-weight:600;color:#333;display:block;margin-bottom:6px;">Analyzer Model${tip('LLM for query weight analysis.')}</label>
                     <div style="display:flex;gap:8px;align-items:center;">
                         <select id="newAnalyzerModelSelect" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.9rem;box-sizing:border-box;">
-                            <option value="global.anthropic.claude-haiku-4-5-20251001-v1:0">Haiku 4.5</option>
+                            <option value="${escapeHtml(DEFAULT_ANALYZER.id)}">${escapeHtml(DEFAULT_ANALYZER.name)}</option>
                         </select>
                         <button type="button" onclick="showAddModelDialog('new')" style="width:36px;height:36px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:1.2rem;display:flex;align-items:center;justify-content:center;" title="Add model">+</button>
                     </div>
@@ -213,7 +213,7 @@ async function createProject() {
     }
 }
 
-const DEFAULT_ANALYZER = { name: 'Haiku 4.5', id: 'global.anthropic.claude-haiku-4-5-20251001-v1:0' };
+const DEFAULT_ANALYZER = { name: 'Nova 2 Lite', id: 'us.amazon.nova-2-lite-v1:0' };
 
 function getAnalyzerModels(project) {
     return project?.analyzer_models?.length ? project.analyzer_models : [DEFAULT_ANALYZER];
@@ -240,9 +240,9 @@ function showAddModelDialog(prefix) {
         <div class="modal-content" style="max-width:400px;padding:24px;">
             <h3 style="margin:0 0 16px;">Add Analyzer Model</h3>
             <label style="font-size:0.85rem;font-weight:600;display:block;margin-bottom:4px;">Display Name</label>
-            <input type="text" id="addModelName" placeholder="e.g. Nova Pro" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:0.9rem;box-sizing:border-box;margin-bottom:12px;">
+            <input type="text" id="addModelName" placeholder="e.g. Nova Micro" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:0.9rem;box-sizing:border-box;margin-bottom:12px;">
             <label style="font-size:0.85rem;font-weight:600;display:block;margin-bottom:4px;">Bedrock Model ID / ARN</label>
-            <input type="text" id="addModelArn" placeholder="e.g. amazon.nova-pro-v1:0" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:0.85rem;box-sizing:border-box;font-family:monospace;margin-bottom:16px;">
+            <input type="text" id="addModelArn" placeholder="e.g. amazon.nova-micro-v1:0" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:0.85rem;box-sizing:border-box;font-family:monospace;margin-bottom:16px;">
             <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button onclick="this.closest('.modal').remove()" style="padding:8px 16px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;">Cancel</button>
                 <button id="addModelBtn" style="padding:8px 16px;border:none;border-radius:6px;background:#1a1a1a;color:#fff;cursor:pointer;">Add</button>

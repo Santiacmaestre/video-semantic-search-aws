@@ -122,5 +122,6 @@ class StorageConstruct(Construct):
             ),
         )
 
-        # --- S3 Vectors bucket name (created via CfnVectorBucket or custom resource) ---
-        self.vector_bucket_name = f"{project_name}-vectors-{account_id}"
+        # The S3 Vectors bucket lives in its own construct (components/vector_bucket.py):
+        # it needs an L1 CfnVectorBucket plus a cleanup custom resource, since S3
+        # Vectors has no L2 and therefore no auto_delete_objects equivalent.

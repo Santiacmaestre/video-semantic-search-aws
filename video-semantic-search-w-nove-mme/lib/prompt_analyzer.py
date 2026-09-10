@@ -13,7 +13,7 @@ except ImportError:
 
 
 bedrock_client = boto3.client('bedrock-runtime', region_name=os.getenv('AWS_REGION'))
-DEFAULT_MODEL_ID = os.getenv('NOVA_ANALYZER_MODEL_ID') or os.getenv('CLAUDE_MODEL_ID')
+DEFAULT_MODEL_ID = os.getenv('NOVA_ANALYZER_MODEL_ID') or os.getenv('ANALYZER_MODEL_ID')
 
 _weight_cache = {}
 

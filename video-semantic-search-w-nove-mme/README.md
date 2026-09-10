@@ -48,7 +48,7 @@ Upload a video → the pipeline segments it at scene boundaries, generates per-s
 
 7. **Authentication & Access** — Users authenticate via Amazon Cognito and access the application through Amazon CloudFront, which serves the static frontend.
 8. **Hybrid Search** — The search request passes through API Gateway to the Search Lambda, which executes a hybrid query combining BM25 text matching (people, captions, titles) with per-modality kNN vector search against Amazon OpenSearch Service and Amazon S3 Vectors (acting as an external vector engine for OpenSearch). DynamoDB is queried for project and video metadata. The following two sub-steps run in parallel before the hybrid query is constructed:
-   - **9. Query Weight Analysis** — Amazon Bedrock (Anthropic Claude Haiku) analyzes the query intent and assigns relevance weights (0.0–1.0) across four modalities: visual, audio, transcription, and metadata. These weights determine how much each signal contributes to the final ranking.
+   - **9. Query Weight Analysis** — Amazon Bedrock (Amazon Nova 2 Lite) analyzes the query intent and assigns relevance weights (0.0–1.0) across four modalities: visual, audio, transcription, and metadata. These weights determine how much each signal contributes to the final ranking.
    - **10. Query Embedding** — The search query text is embedded three times concurrently via Amazon Nova MME — once each for visual (`GENERIC_RETRIEVAL`), audio (`GENERIC_RETRIEVAL`), and transcription (`TEXT_RETRIEVAL`) purposes — to generate per-modality vectors for kNN similarity search. OpenSearch fuses the BM25 and kNN scores using weighted min-max normalization based on the weights from step 9.
 
 ## Performance Results
@@ -88,7 +88,9 @@ Here is how you can deploy the solution and try it yourself.
 
 ## Prerequisites
 
-- AWS account with [Amazon Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) enabled for Nova MME, Nova Lite, and Claude Haiku 4.5
+- AWS account with [Amazon Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) enabled for Nova Multimodal Embeddings and Nova 2 Lite
+- Deploy in **us-east-1**: `amazon.nova-2-multimodal-embeddings-v1:0` is only offered there. Confirm with `aws bedrock list-foundation-models --region <region> --query "modelSummaries[?contains(modelId,'multimodal-embeddings')].modelId"`
+- Nova 2 Lite is reached through the `us.` cross-region inference profile, which fans requests out across us-east-1, us-east-2 and us-west-2. If your organization restricts regions, all three must be permitted or the call fails with an `AccessDeniedException` naming whichever region the request landed in
 - [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) configured with a named profile
 - [Node.js](https://nodejs.org/) ≥ 18 (for AWS CDK CLI)
 - [AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html) v2 (`npm install -g aws-cdk`)
@@ -99,15 +101,9 @@ Here is how you can deploy the solution and try it yourself.
 
 Infrastructure is managed with AWS CDK (Python). **Docker must be running** before you deploy — CDK builds a Docker image for the Fargate shot segmentation container.
 
-**Step 1 — Create the S3 Vectors bucket** (not yet supported by CloudFormation). This must be done before `cdk deploy` because the bootstrap process creates per-project vector indices and triggers the Meridian video ingestion pipeline, both of which require the bucket to exist:
+The S3 Vectors bucket is part of the stack (`cdk/components/vector_bucket.py`), so there is no manual pre-deploy step. It is created as an `AWS::S3Vectors::VectorBucket` named `<project_name>-vectors-<ACCOUNT_ID>`, and the bootstrap custom resource depends on it so per-project indices are only created once the bucket exists.
 
-```python
-import boto3
-s3vectors = boto3.client('s3vectors', region_name='us-east-1')
-s3vectors.create_vector_bucket(vectorBucketName='video-search-v2-vectors-<ACCOUNT_ID>')
-```
-
-**Step 2 — Deploy with CDK** from the `cdk/` directory:
+**Deploy with CDK** from the `cdk/` directory:
 
 ```bash
 cd cdk
@@ -187,24 +183,15 @@ Password requirements: minimum 8 characters, with uppercase, lowercase, numbers,
 
 ## Cleanup
 
-**1. Delete the S3 Vectors bucket** (not managed by CloudFormation):
-
-```python
-import boto3
-client = boto3.client('s3vectors', region_name='us-east-1')
-bucket = 'video-search-v2-vectors-<ACCOUNT_ID>'
-for idx in client.list_indexes(vectorBucketName=bucket).get('indexes', []):
-    client.delete_index(vectorBucketName=bucket, indexName=idx['indexName'])
-client.delete_vector_bucket(vectorBucketName=bucket)
-```
-
-**2. Destroy the CDK stack:**
+**1. Destroy the CDK stack:**
 
 ```bash
 cd cdk
 source .venv/bin/activate
 cdk destroy
 ```
+
+The S3 Vectors bucket is deleted with the stack. S3 Vectors refuses to delete a bucket that still holds indexes, so a cleanup custom resource removes every index first — this is the S3 Vectors equivalent of `auto_delete_objects`. The vectors are derived data and are rebuilt by re-running ingestion over the videos bucket.
 
 The access logs bucket will likely fail deletion because it contains log objects. If `cdk destroy` fails, empty the bucket and retry:
 
@@ -215,7 +202,7 @@ aws cloudformation delete-stack --stack-name video-search-v2-stack --region us-e
 aws cloudformation wait stack-delete-complete --stack-name video-search-v2-stack --region us-east-1
 ```
 
-**3. Delete retained resources** — CDK retains the OpenSearch domain and Cognito user pool to prevent accidental data loss. Delete them manually after stack destruction:
+**2. Delete retained resources** — CDK retains the OpenSearch domain and Cognito user pool to prevent accidental data loss. Delete them manually after stack destruction:
 
 ```bash
 # Delete OpenSearch domain (can take 20-30 minutes)
@@ -638,7 +625,7 @@ The vector engine is set at project creation and cannot be changed after (the Op
 
 | Service | Purpose |
 |---|---|
-| **Amazon Bedrock** | Nova MME (1024d embeddings), Nova Lite (captions), Haiku (query analysis) |
+| **Amazon Bedrock** | Nova MME (1024d embeddings), Nova 2 Lite (captions + query analysis) |
 | **Amazon OpenSearch** | Hybrid BM25 + kNN search with configurable vector engine (S3 Vectors or nmslib HNSW) |
 | **Amazon S3 Vectors** | Per-project vector storage and staging (visual, audio, transcription, entity indices) |
 | **AWS Step Functions** | Video processing pipeline with parallel branches |

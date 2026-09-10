@@ -283,6 +283,10 @@ def _suppress_cognito(stack: Stack) -> None:
                 id="AwsSolutions-COG3",
                 reason="Advanced security features (Cognito threat protection) not enabled — adds per-MAU cost not justified for demo project",
             ),
+            NagPackSuppression(
+                id="AwsSolutions-COG8",
+                reason="Plus tier feature plan not enabled — same tradeoff as COG3, since threat protection is what the Plus tier sells; adds per-MAU cost not justified for a demo project",
+            ),
         ],
     )
 

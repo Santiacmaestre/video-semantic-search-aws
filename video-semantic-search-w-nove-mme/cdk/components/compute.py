@@ -11,10 +11,36 @@ from aws_cdk import (
     aws_s3_notifications as s3n,
     BundlingOptions,
 )
-from config import LAMBDA_RUNTIME, NOVA_MODEL_ID, NOVA_LITE_MODEL_ID, CLAUDE_MODEL_ID
+from config import LAMBDA_RUNTIME, NOVA_MODEL_ID, NOVA_LITE_MODEL_ID, ANALYZER_MODEL_ID
 
 # Absolute path to project root (parent of cdk/)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Cross-region inference profile prefixes (see Bedrock "Supported Regions and models
+# for inference profiles"). A prefixed model ID resolves to a base foundation model.
+_INFERENCE_PROFILE_PREFIXES = ("us", "eu", "apac", "global")
+
+
+def _bedrock_invoke_arns(model_id: str, account_id: str, region: str = "us-east-1") -> list[str]:
+    """Return the ARN patterns required to invoke a Bedrock model.
+
+    For a plain foundation-model ID one region-scoped ARN is enough. For a
+    cross-region inference profile ID (``us.*``, ``global.*``, ...) three patterns
+    are needed: the profile ID as a foundation model, the account-scoped
+    inference-profile resource, and the regionless base foundation model — the
+    Converse API authorizes against the base model in every region the profile
+    can route to. A full ARN (e.g. a custom-model-deployment from the distillation
+    workflow) is already a resource and is passed through unchanged.
+    """
+    if model_id.startswith("arn:"):
+        return [model_id]
+
+    arns = [f"arn:aws:bedrock:{region}::foundation-model/{model_id}"]
+    prefix, _, base_model_id = model_id.partition(".")
+    if prefix in _INFERENCE_PROFILE_PREFIXES and base_model_id:
+        arns.append(f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{model_id}")
+        arns.append(f"arn:aws:bedrock:*::foundation-model/{base_model_id}")
+    return arns
 
 
 class ComputeConstruct(Construct):
@@ -35,7 +61,7 @@ class ComputeConstruct(Construct):
     ) -> None:
         super().__init__(scope, id)
 
-        nova_analyzer_model_id = scope.node.try_get_context("nova_analyzer_model_id") or CLAUDE_MODEL_ID
+        nova_analyzer_model_id = scope.node.try_get_context("nova_analyzer_model_id") or ANALYZER_MODEL_ID
 
         # --- Shared IAM Role ---
         self.lambda_role = iam.Role(
@@ -96,17 +122,16 @@ class ComputeConstruct(Construct):
                 "bedrock:StartAsyncInvoke",
                 "bedrock:GetAsyncInvoke",
             ],
-            resources=[
-                f"arn:aws:bedrock:us-east-1::foundation-model/{NOVA_MODEL_ID}",
-                # Nova Lite (US inference profile for captions/genre)
-                f"arn:aws:bedrock:us-east-1::foundation-model/{NOVA_LITE_MODEL_ID}",
-                f"arn:aws:bedrock:us-east-1:{account_id}:inference-profile/{NOVA_LITE_MODEL_ID}",
-                f"arn:aws:bedrock:*::foundation-model/{NOVA_LITE_MODEL_ID.replace('us.', '')}",
-                # Claude (global.* cross-region inference profile for weight analysis)
-                f"arn:aws:bedrock:us-east-1::foundation-model/{CLAUDE_MODEL_ID}",
-                f"arn:aws:bedrock:us-east-1:{account_id}:inference-profile/{CLAUDE_MODEL_ID}",
-                f"arn:aws:bedrock:*::foundation-model/{CLAUDE_MODEL_ID.replace('global.', '')}",
-            ],
+            resources=sorted({
+                arn
+                for model_id in (
+                    NOVA_MODEL_ID,            # Nova MME — video/audio/text embeddings
+                    NOVA_LITE_MODEL_ID,       # Nova Lite — segment captions + genre
+                    ANALYZER_MODEL_ID,        # default query weight analyzer
+                    nova_analyzer_model_id,   # analyzer override (-c nova_analyzer_model_id=...)
+                )
+                for arn in _bedrock_invoke_arns(model_id, account_id)
+            }),
         ))
         # Bedrock — list operations (no resource-level support)
         self.lambda_role.add_to_policy(iam.PolicyStatement(
@@ -219,7 +244,7 @@ class ComputeConstruct(Construct):
                 "SEGMENTS_TABLE": segments_table.table_name,
                 "ENTITIES_TABLE": entities_table.table_name,
                 "PROJECTS_TABLE": projects_table.table_name,
-                "CLAUDE_MODEL_ID": CLAUDE_MODEL_ID,
+                "ANALYZER_MODEL_ID": ANALYZER_MODEL_ID,
                 "NOVA_ANALYZER_MODEL_ID": nova_analyzer_model_id,
             },
         )
@@ -256,6 +281,7 @@ class ComputeConstruct(Construct):
             "ProjectFunction", "project_function.lambda_handler",
             use_layer=True,
             environment={
+                "ANALYZER_MODEL_ID": ANALYZER_MODEL_ID,
                 "PROJECTS_TABLE": projects_table.table_name,
                 "VIDEOS_TABLE": videos_table.table_name,
                 "SEGMENTS_TABLE": segments_table.table_name,

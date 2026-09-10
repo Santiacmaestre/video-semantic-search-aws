@@ -88,7 +88,7 @@ def _create(event):
         'project_id': project_id,
         'user_id': user_id,
         'name': 'Meridian Demo',
-        'analyzer_model': os.environ.get('CLAUDE_MODEL_ID', 'global.anthropic.claude-haiku-4-5-20251001-v1:0'),
+        'analyzer_model': os.environ.get('ANALYZER_MODEL_ID', 'us.amazon.nova-2-lite-v1:0'),
         'segment_duration': 10,
         'metadata_model': 'nova-lite',
         'vector_engine': 'opensearch',

@@ -23,7 +23,7 @@ def lambda_handler(event, context):
             return respond(400, {'error': 'Query parameter is required'})
 
         # Get analyzer model from project config
-        analyzer_model_id = os.environ.get('CLAUDE_MODEL_ID')  # default: Haiku
+        analyzer_model_id = os.environ.get('ANALYZER_MODEL_ID')  # default: Nova 2 Lite
         if project_id:
             try:
                 proj = dynamodb.Table(PROJECTS_TABLE).get_item(Key={'project_id': project_id}).get('Item', {})

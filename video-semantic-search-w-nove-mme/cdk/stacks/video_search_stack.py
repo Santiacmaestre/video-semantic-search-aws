@@ -10,6 +10,7 @@ from aws_cdk import (
     aws_s3 as s3,
 )
 from components.storage import StorageConstruct
+from components.vector_bucket import VectorBucketConstruct
 from components.auth import AuthConstruct
 from components.cdn import CdnConstruct
 from components.compute import ComputeConstruct
@@ -39,6 +40,13 @@ class VideoSearchStack(Stack):
 
         # 1. Storage (no deps)
         storage = StorageConstruct(self, "Storage", project_name=project_name, account_id=account_id)
+
+        # 1b. S3 Vectors bucket (no deps) — vector store for Nova MME embeddings
+        vector_bucket = VectorBucketConstruct(
+            self, "VectorBucket",
+            project_name=project_name,
+            account_id=account_id,
+        )
 
         # 2. Auth (no deps)
         auth = AuthConstruct(self, "Auth", project_name=project_name, account_id=account_id)
@@ -118,7 +126,7 @@ class VideoSearchStack(Stack):
             entities_table=storage.entities_table,
             projects_table=storage.projects_table,
             processing_queue=storage.processing_queue,
-            vector_bucket_name=storage.vector_bucket_name,
+            vector_bucket_name=vector_bucket.bucket_name,
         )
 
         # 7b. Container (Fargate for shot segmentation)
@@ -204,11 +212,14 @@ class VideoSearchStack(Stack):
             projects_table=storage.projects_table,
             lambda_role=compute.lambda_role,
             shared_layer=compute.shared_layer,
-            vector_bucket_name=storage.vector_bucket_name,
+            vector_bucket_name=vector_bucket.bucket_name,
             opensearch_endpoint=search.domain_endpoint,
         )
         bootstrap.node.add_dependency(storage.videos_bucket)
         bootstrap.node.add_dependency(compute.orchestrator_fn)
+        # Bootstrap calls create_project_indices() for the demo project, which
+        # fails unless the vector bucket already exists.
+        bootstrap.node.add_dependency(vector_bucket.bucket)
 
         # --- Outputs ---
         CfnOutput(self, "ApiEndpoint", value=api.api_endpoint, description="API Gateway endpoint URL")
@@ -219,7 +230,8 @@ class VideoSearchStack(Stack):
         CfnOutput(self, "VideoBucket", value=storage.videos_bucket.bucket_name, description="S3 bucket for videos")
         CfnOutput(self, "CloudFrontStaticDomain", value=cdn.static_domain_name, description="CloudFront domain for static website")
         CfnOutput(self, "CloudFrontVideoDomain", value=cdn.videos_domain_name, description="CloudFront domain for videos")
-        CfnOutput(self, "VectorBucketName", value=storage.vector_bucket_name, description="S3 Vectors bucket name")
+        CfnOutput(self, "VectorBucketName", value=vector_bucket.bucket_name, description="S3 Vectors bucket name")
+        CfnOutput(self, "VectorBucketArn", value=vector_bucket.bucket_arn, description="S3 Vectors bucket ARN")
         CfnOutput(self, "StateMachineArn", value=processing.state_machine.state_machine_arn, description="Step Functions state machine ARN")
         CfnOutput(self, "OpenSearchEndpoint", value=search.domain_endpoint, description="OpenSearch domain endpoint")
         CfnOutput(self, "AppUrl", value=f"https://{cdn.static_domain_name}", description="Application URL")
