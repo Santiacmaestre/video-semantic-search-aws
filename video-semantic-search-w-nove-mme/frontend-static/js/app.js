@@ -631,7 +631,7 @@ function displayResultsPage(container) {
         const peopleLine = people.length ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${people.map(p => `<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:500;">\u{1F464} ${escapeHtml(p)}</span>`).join('')}</div>` : '';
         card.innerHTML = `
             <video controls data-end="${parseFloat(result.end_sec) || 0}">
-                <source src="${CONFIG.VIDEO_CDN}/uploads/${encodeURIComponent(videoFile)}#t=${parseFloat(result.start_sec) || 0},${parseFloat(result.end_sec) || 0}" type="video/mp4">
+                <source src="${CONFIG.VIDEO_CDN}/uploads/${encodeURIComponent(videoFile)}#t=${parseFloat(result.start_sec) || 0}" type="video/mp4">
             </video>
             <div class="result-info" style="padding:10px 12px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -663,10 +663,29 @@ function displayResultsPage(container) {
     }
 }
 
-// Stop video at segment end
+// Pause once when playback passes the end of the matched segment, so a result
+// plays as a preview of just that scene.
+//
+// The stop MUST fire only once. `timeupdate` fires ~4x/second, so re-pausing on
+// every event past `end` makes the video unwatchable: press play, it advances a
+// few milliseconds, the next timeupdate pauses it again, forever. Pressing play
+// after the preview stop is treated as "I want to keep watching", and seeking
+// back inside the segment re-arms the stop.
 document.addEventListener('timeupdate', (e) => {
-    if (e.target.tagName === 'VIDEO' && e.target.dataset.end) {
-        if (e.target.currentTime >= parseFloat(e.target.dataset.end)) e.target.pause();
+    const video = e.target;
+    if (video.tagName !== 'VIDEO') return;
+
+    // `|| 0` upstream means a result with no end_sec renders data-end="0", which
+    // is a truthy string. Treat a non-positive end as "no segment boundary"
+    // instead of pausing at time 0 and never playing at all.
+    const end = parseFloat(video.dataset.end);
+    if (!Number.isFinite(end) || end <= 0) return;
+
+    if (video.currentTime < end) {
+        delete video.dataset.previewStopped;
+    } else if (!video.dataset.previewStopped) {
+        video.dataset.previewStopped = '1';
+        video.pause();
     }
 }, true);
 
