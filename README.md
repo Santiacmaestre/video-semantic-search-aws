@@ -8,6 +8,8 @@ An AWS reference implementation for building video semantic search using Amazon 
 
 Full serverless video search engine built with CDK, Lambda, OpenSearch, Step Functions, and Amazon Nova Multimodal Embeddings. Includes video ingestion, frame extraction, embedding generation, and a natural language search interface.
 
+Step-by-step deploy and teardown commands: [DEPLOYMENT.md](video-semantic-search-w-nove-mme/DEPLOYMENT.md)
+
 ### [Optimized Video Search Intent with Bedrock Model Distillations](optimized-video-seach-intent-w-bedrock-model-distillations/)
 
 Model distillation demo for optimizing query analysis by distilling from Amazon Nova Premier to Amazon Nova Micro, reducing latency and cost for intent classification in video search workflows.

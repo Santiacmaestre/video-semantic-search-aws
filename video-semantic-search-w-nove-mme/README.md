@@ -101,6 +101,8 @@ Here is how you can deploy the solution and try it yourself.
 
 Infrastructure is managed with AWS CDK (Python). **Docker must be running** before you deploy — CDK builds a Docker image for the Fargate shot segmentation container.
 
+> For a full command-by-command runbook (tooling setup, Bedrock model access, deploy, verification, and teardown), see **[DEPLOYMENT.md](DEPLOYMENT.md)**. The summary below is the short path.
+
 The S3 Vectors bucket is part of the stack (`cdk/components/vector_bucket.py`), so there is no manual pre-deploy step. It is created as an `AWS::S3Vectors::VectorBucket` named `<project_name>-vectors-<ACCOUNT_ID>`, and the bootstrap custom resource depends on it so per-project indices are only created once the bucket exists.
 
 **Deploy with CDK** from the `cdk/` directory:
