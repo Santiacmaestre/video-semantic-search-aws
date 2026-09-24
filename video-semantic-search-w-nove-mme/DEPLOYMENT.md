@@ -25,7 +25,7 @@ pre-deploy or post-destroy resource steps other than the two resources CDK delib
 Re-export these in every new terminal you use for this runbook.
 
 ```bash
-export AWS_PROFILE=<your-profile>          # e.g. jnj-rd-playground
+export AWS_PROFILE=<your-profile>          # e.g. my-sandbox-account
 export AWS_REGION=us-east-1
 export STACK_NAME=video-search-v2-stack
 export PROJECT_NAME=video-search-v2
@@ -120,30 +120,9 @@ cdk bootstrap "aws://${ACCOUNT_ID}/us-east-1"
 
 ### 1.1 Create the Python environment for CDK
 
-> **Everything from here on runs inside `cdk/`.** `requirements.txt` and `cdk.json` live there, not
-> at the project root — running these from one level up fails with
-> `Could not open requirements file: requirements.txt`.
-
 ```bash
 cd cdk
-ls requirements.txt cdk.json     # sanity check: both must exist before continuing
-```
-
-```bash
 python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-`aws-cdk-lib` pulls in `jsii`, which supports a specific range of Python versions. If the install
-fails resolving `jsii` or `aws-cdk-lib` because your default `python3` is too new, build the venv
-from a supported interpreter instead:
-
-```bash
-brew install python@3.13
-rm -rf .venv
-python3.13 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
